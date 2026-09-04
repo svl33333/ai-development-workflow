@@ -1,0 +1,1 @@
+{"type":"object","required":["project_id","stage","work_id","artifact_type","version","path"]}

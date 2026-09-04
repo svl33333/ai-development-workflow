@@ -1,0 +1,13 @@
+{
+  "execution_id": "phase1-local-002",
+  "executed_at": "2026-09-04T23:17:05.9718419+09:00",
+  "base_revision": "6c4219457d7336d14c8c9b02ecdc737a563fdc57",
+  "working_tree": true,
+  "test_status": "passed",
+  "execution_summary": {
+    "npm_test": { "passed": 22, "failed": 0 },
+    "validate_fixture": "passed",
+    "git_diff_check": "passed"
+  },
+  "external_writes": false
+}

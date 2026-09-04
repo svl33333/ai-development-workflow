@@ -1,0 +1,1 @@
+{"type":"object","required":["protocol","state","task_id","iteration","operation","workspace","work_id","stage","expected"]}

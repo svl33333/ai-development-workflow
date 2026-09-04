@@ -1,0 +1,1 @@
+{"type":"object","required":["workflow_version","project_id","work_id","stage","status","next_action","revision","updated_at","agent_state"]}
