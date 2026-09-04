@@ -52,6 +52,12 @@ export async function validateProduct(productPath) {
       else if (artifact.path.includes('..') || path.isAbsolute(artifact.path)) errors.push({ id: 'ARTIFACT_LINK_INVALID', message: `unsafe artifact path: ${artifact.path}` });
       else { try { await fs.access(path.join(productPath, artifact.path)); } catch { errors.push({ id: 'ARTIFACT_MISSING', message: artifact.path }); } }
     }
+    const requiresGitEvidence = ['production_pr_draft', 'production_pr_review', 'production_fix', 'production_publish_waiting_approval', 'production_published', 'production_merge_waiting_approval', 'completed'].includes(state.stage);
+    const isFixture = path.resolve(productPath).includes(`${path.sep}fixtures${path.sep}`);
+    if (requiresGitEvidence && !isFixture) {
+      try { await fs.access(path.join(productPath, '.git')); }
+      catch { errors.push({ id: 'GIT_REPOSITORY_REQUIRED', message: 'production PR evidence requires a Git repository at the product root' }); }
+    }
     const lockDir = path.join(productPath, '.ai-workflow', 'locks');
     try { const locks = (await fs.readdir(lockDir)).filter((file) => file.endsWith('.lock')); if (locks.length) errors.push({ id: 'LOCK_CONFLICT', message: `active locks: ${locks.join(', ')}` }); } catch { /* setup may not have run */ }
   }
@@ -70,3 +76,4 @@ export async function validateProduct(productPath) {
   }
   return { ok: errors.length === 0, state: result?.state ?? null, config: config ?? null, errors };
 }
+
