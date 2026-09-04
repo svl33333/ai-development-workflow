@@ -19,6 +19,7 @@ function scalar(value) {
 }
 
 export function parseFrontMatter(text) {
+  text = text.replace(/\r\n?/g, '\n');
   if (!text.startsWith('---\n')) throw new Error('state must start with YAML front matter');
   const end = text.indexOf('\n---', 4);
   if (end < 0) throw new Error('YAML front matter closing marker is missing');
@@ -96,3 +97,4 @@ export class StateStore {
     finally { await handle?.close(); if (acquired) await fs.rm(lock, { force: true }); }
   }
 }
+
