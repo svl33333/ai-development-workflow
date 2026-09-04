@@ -7,4 +7,3 @@ if (!result.ok) {
 } else {
   console.log(`fixture valid: ${result.state.project_id}`);
 }
-

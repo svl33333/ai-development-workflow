@@ -91,4 +91,3 @@ GitHub Issueの取得・更新・クローズ、コメント、リポジトリ�
 - `production_pr_draft`以降はプロダクトルートのGit管理を必須とし、実差分なしでPRレビューへ進めないこと。
 - Prototype ProjectとProduction Projectの振り分けを工程ごとに検証すること。
 - ライブC2Cが利用できない場合は、外部会話を擬似的に自動実行したことにせず、fail-closedしてCodex with ChatGPTの手動フォールバックへ切り替えること。
-
