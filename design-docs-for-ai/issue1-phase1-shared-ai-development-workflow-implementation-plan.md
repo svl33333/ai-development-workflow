@@ -75,6 +75,7 @@ test/...
 - `approvals.js`: 承認者、承認種別、対象Issue/PR、最新コミット、テスト結果、期限、失効条件を保存・検証。
 - `handoff.js`: `status`、`next_action`、`artifacts`、`findings`、`questions`、`stop_reason`、`handoff_summary`を含む最小受け渡し。
 - `adapters/codex.js`: CodexからCLI、Git、テスト、GitHub操作を呼び出す境界。ワークフロー規則を再定義しない。
+- GitHub操作は永続OAuthのGitHubコネクターを優先し、Issue／PR更新とAPI commitを再認証なしで実行する。401などの失効時だけCLI認証をフォールバックする。認証情報はプロジェクトへ保存しない。
 - `adapters/chatgpt-c2c.js`: C2C依頼・回答の契約、読み取り対象、接続障害の分類。ChatGPTへの書込み権限を与えない。
 - `adapters/chatgpt-project.js`: プロトタイプ用／本番用ChatGPT Projectの名称、設定、指示、会話目的を定義し、利用可能性をprobeする。自動作成できない場合は人間向けの手動設定成果物を作成し、検証済みProject以外への依頼を止める。会話履歴は状態の正本にしない。
 - `adapters/copilot.js`: 共通入力・出力・機密境界・未対応状態だけを文書化する。実動処理は実装しない。
@@ -293,3 +294,4 @@ PR本文テンプレートにはIssue URL、対応範囲、非対応範囲、確
 3. GitHub PR公開・マージを実際に行う権限と、C2C接続障害時の再接続手順。
 
 この計画ファイル作成後、独立計画レビューを行い、Critical/High相当の計画欠陥を反映してから、人間の計画承認を待つ。計画承認前に実装は開始しない。
+
