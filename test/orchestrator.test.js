@@ -6,6 +6,7 @@ import path from 'node:path';
 import { WorkflowOrchestrator } from '../src/orchestrator.js';
 import { createFakeGitHubAdapter } from '../src/adapters/github.js';
 import { createFakeC2CAdapter } from '../src/adapters/chatgpt-c2c.js';
+import { desiredProject } from '../src/adapters/chatgpt-project.js';
 
 test('fixture completes the approved prototype-to-merge vertical slice', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-e2e-')); const github = createFakeGitHubAdapter(); const flow = new WorkflowOrchestrator(root, github);
@@ -57,6 +58,20 @@ test('wrong ChatGPT Project fails closed before C2C', async () => {
   assert.equal(c2c.calls.length, 0);
 });
 
+test('C2C operations route prototype and production work to their distinct Projects', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-project-routing-'));
+  const c2c = createFakeC2CAdapter();
+  const requestedKinds = [];
+  const projectProvider = async (kind) => { requestedKinds.push(kind); return desiredProject(kind); };
+  const flow = new WorkflowOrchestrator(root, createFakeGitHubAdapter(), null, c2c, projectProvider);
+  await flow.store.setup({ project_id: 'routing-test' });
+  await flow.store.update((state) => ({ ...state, work_id: 'routing-work' }));
+  await flow.chatgptStep('prototype_design', 'prototype_design');
+  await flow.store.update((state) => ({ ...state, stage: 'production_issue_ready', next_action: 'chatgpt_production_plan', agent_state: { ...state.agent_state, stage: 'production_issue_ready', next_action: 'chatgpt_production_plan' } }));
+  await flow.chatgptStep('production_plan', 'production_planning');
+  assert.deepEqual(requestedKinds, ['prototype', 'production']);
+});
+
 test('default adapters fail closed outside fixtures', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-live-'));
   const flow = new WorkflowOrchestrator(root);
@@ -81,3 +96,4 @@ test('next dispatches approved publish and merge gates', async () => {
   const published = await flow.next(); assert.equal(published.mutation, true); assert.equal((await flow.state()).stage, 'production_published'); assert.equal(github.calls.at(-1).operation, 'createPullRequest');
   await flow.mergeApproved(); const completed = await flow.next(); assert.equal(completed.mutation, true); assert.equal((await flow.state()).stage, 'completed'); assert.equal(github.calls.at(-1).operation, 'mergePullRequest');
 });
+
