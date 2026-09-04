@@ -137,6 +137,20 @@ test('a Project bound to the wrong repository cannot start a ChatGPT conversatio
   assert.equal(c2c.calls.length, 0);
 });
 
+test('C2C operations route prototype and production work to their distinct Projects', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-project-routing-'));
+  const c2c = createFakeC2CAdapter();
+  const requestedKinds = [];
+  const projectProvider = async (kind) => { requestedKinds.push(kind); return desiredProject(kind); };
+  const flow = new WorkflowOrchestrator(root, createFakeGitHubAdapter(), null, c2c, projectProvider);
+  await flow.store.setup({ project_id: 'routing-test' });
+  await flow.store.update((state) => ({ ...state, work_id: 'routing-work' }));
+  await flow.chatgptStep('prototype_design', 'prototype_design');
+  await flow.store.update((state) => ({ ...state, stage: 'production_issue_ready', next_action: 'chatgpt_production_plan', agent_state: { ...state.agent_state, stage: 'production_issue_ready', next_action: 'chatgpt_production_plan' } }));
+  await flow.chatgptStep('production_plan', 'production_planning');
+  assert.deepEqual(requestedKinds, ['prototype', 'production']);
+});
+
 test('default adapters fail closed outside fixtures', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-live-'));
   const flow = new WorkflowOrchestrator(root);
