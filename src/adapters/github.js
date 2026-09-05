@@ -7,8 +7,9 @@ export function createGitHubAdapter({ credentialStore, credentialKey, repository
   if (!credentialStore || !credentialKey || !repository || !request) throw new Error('GitHub adapter dependencies are required');
   async function authenticateAndRun(operation) {
     const credential = await credentialStore.loadCredential(credentialKey);
-    if (credential.metadata.repository !== repository || Date.parse(credential.metadata.expires_at) <= Date.now() || !credential.metadata.permissions.includes('pull_requests:write')) throw new Error('credential is expired, out of scope, or lacks permission');
+    const permission = operation.type === 'createIssue' ? 'issues:write' : 'pull_requests:write';
+    if (credential.metadata.repository !== repository || Date.parse(credential.metadata.expires_at) <= Date.now() || !credential.metadata.permissions.includes(permission)) throw new Error('credential is expired, out of scope, or lacks permission');
     for (let attempt = 0; attempt < 2; attempt += 1) { const response = await request({ operation, token: credential.secret }); if (response.status !== 401 || attempt === 1) return response; }
   }
-  return { async createPullRequest(input) { return authenticateAndRun({ type: 'createPullRequest', input }); }, async mergePullRequest(input) { return authenticateAndRun({ type: 'mergePullRequest', input }); } };
+  return { async createIssue(input) { return authenticateAndRun({ type: 'createIssue', input }); }, async createPullRequest(input) { return authenticateAndRun({ type: 'createPullRequest', input }); }, async mergePullRequest(input) { return authenticateAndRun({ type: 'mergePullRequest', input }); } };
 }

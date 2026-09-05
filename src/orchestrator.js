@@ -55,6 +55,16 @@ export class WorkflowOrchestrator {
       if (current.stage === 'production_plan_waiting_approval' && (current.qualifying_plan_review_iteration < 3 || current.review_history.some((entry) => entry.unresolved_blocking_findings > 0))) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true };
       }
+      const requiredPresentationKinds = {
+        production_spec_waiting_approval: ['spec', 'production_spec'],
+        production_plan_waiting_approval: ['plan', 'production_plan'],
+        production_pr_review: ['pr_review', 'pr'],
+        production_publish_waiting_approval: ['pr', 'pr_publish', 'pr_review'],
+        production_published: ['pr', 'pr_merge']
+      }[current.stage];
+      if (requiredPresentationKinds && !(await this.hasCurrentPresentation(current, requiredPresentationKinds))) {
+        return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true, reason: 'review artifact must be presented before approval' };
+      }
       if (current.stage === 'production_issue_waiting_review' && !(current.presentation_receipts ?? []).some((receipt) => receipt.artifact_kind === 'issue' && receipt.approval_status === 'pending' && JSON.stringify(receipt.issue_identity) === JSON.stringify(current.issue_identity) && receipt.work_id === current.work_id)) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true, reason: 'issue artifact must be presented before approval' };
       }
@@ -97,6 +107,14 @@ export class WorkflowOrchestrator {
     await fs.mkdir(path.join(this.productPath, '.ai-workflow', 'approvals'), { recursive: true });
     await fs.writeFile(path.join(this.productPath, '.ai-workflow', 'approvals', `${kind}.json`), JSON.stringify(approval, null, 2));
     return approval;
+  }
+  async hasCurrentPresentation(state, kinds) {
+    for (const receipt of state.presentation_receipts ?? []) {
+      if (receipt.work_id !== state.work_id || receipt.approval_status !== 'pending' || !kinds.includes(receipt.artifact_kind)) continue;
+      const verified = await verifyPresentationReceipt(this.productPath, receipt, { canonicalRevision: receipt.canonical_revision });
+      if (verified.ok) return true;
+    }
+    return false;
   }
   async presentArtifact({ artifactPath, artifactKind, canonicalRevision = null, present }) {
     const state = await this.state();
@@ -201,7 +219,7 @@ export class WorkflowOrchestrator {
     if (!approval.valid || required.some((key) => approval[key] === undefined || approval[key] === null) || approval.unresolved_blocking_findings !== 0 || Object.entries(expected).some(([key, value]) => approval[key] !== value)) throw Object.assign(new Error(`${kind} approval binding is stale or incomplete`), { code: 4 });
     return approval;
   }
-  async publish() { if (!this.github) throw Object.assign(new Error('live GitHub adapter is required'), { code: 4 }); const state = await this.state(); const evidence = await this.evidenceProvider(state); await this.requireApproval('pr_publish', { work_id: state.work_id, ...evidence }); await this.github.createPullRequest({ head: evidence.target_revision, issue_url: 'https://example.invalid/issues/1' }); return this.setStage('production_published', 'waiting_for_human'); }
+  async publish() { if (!this.github) throw Object.assign(new Error('live GitHub adapter is required'), { code: 4 }); const state = await this.state(); const evidence = await this.evidenceProvider(state); await this.requireApproval('pr_publish', { work_id: state.work_id, ...evidence }); if (!(await this.hasCurrentPresentation(state, ['pr_review', 'pr']))) throw Object.assign(new Error('PR review artifact must be presented before publishing'), { code: 4 }); const created = await this.github.createPullRequest({ head: evidence.target_revision, issue_url: 'https://example.invalid/issues/1' }); const artifact = await writeArtifact(this.productPath, { projectId: state.project_id, stage: 'production_published', workId: state.work_id, artifactType: 'pr', version: state.revision + 1 }, `# Pull Request\n\n- number: ${created.number ?? evidence.pr_number ?? 'unknown'}\n- head: ${created.head ?? evidence.target_revision}\n`); await this.store.update((current) => ({ ...current, artifacts: [...(current.artifacts ?? []), { kind: 'pr', path: artifact, version: current.revision + 1 }] })); return this.setStage('production_published', 'waiting_for_human'); }
   async mergeApproved() { const evidence = await this.evidenceProvider(await this.state()); await this.approve('pr_merge', evidence); return this.setStage('production_merge_waiting_approval', 'ready'); }
-  async merge() { if (!this.github) throw Object.assign(new Error('live GitHub adapter is required'), { code: 4 }); const state = await this.state(); const evidence = await this.evidenceProvider(state); await this.requireApproval('pr_merge', { work_id: state.work_id, ...evidence }); await this.github.mergePullRequest({ number: evidence.pr_number, head: evidence.target_revision }); return this.setStage('completed', 'completed', null); }
+  async merge() { if (!this.github) throw Object.assign(new Error('live GitHub adapter is required'), { code: 4 }); const state = await this.state(); const evidence = await this.evidenceProvider(state); await this.requireApproval('pr_merge', { work_id: state.work_id, ...evidence }); if (!(await this.hasCurrentPresentation(state, ['pr_review', 'pr']))) throw Object.assign(new Error('PR review artifact must be presented before merging'), { code: 4 }); await this.github.mergePullRequest({ number: evidence.pr_number, head: evidence.target_revision }); return this.setStage('completed', 'completed', null); }
 }
