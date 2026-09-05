@@ -73,14 +73,10 @@ def run_onboarding(
         }
         write_json_atomically(evidence_path, evidence)
         raise
-    finally:
-        if temporary_directory is not None:
-            temporary_directory.cleanup()
+    # Consume the lifecycle event while the temporary master checkout still exists.
+    # The event is only delivered after the Node control plane acknowledges it.
     write_json_atomically(evidence_path, evidence)
     handle_bridge_request({**BridgeRequest(product_root.name, "onboarding", "ensure_orchestrator").as_dict(), "product_path": str(product_root)})
-    # The event is only considered delivered after the local control-plane consumer
-    # acknowledges it. This keeps Python onboarding and the Node orchestrator durable
-    # without requiring either environment to reach across the other.
     cli = source_root / "src" / "cli.js"
     if not cli.is_file():
         raise RuntimeError("master Node control-plane CLI is missing; bridge event cannot be acknowledged")
@@ -90,4 +86,7 @@ def run_onboarding(
         evidence["error"] = completed.stderr.strip() or "bridge consumer failed"
         write_json_atomically(evidence_path, evidence)
         raise RuntimeError(evidence["error"])
+    if temporary_directory is not None:
+        temporary_directory.cleanup()
+    write_json_atomically(evidence_path, evidence)
     return evidence
