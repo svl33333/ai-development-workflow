@@ -11,10 +11,11 @@ export function createExecutionEngine({ root, childAdapter, gitAdapter, integrat
       scheduler.load(plan, { approvedDigest: approvedDigest ?? plan.approval_digest });
       const runner = new ChildTaskRunner({ root, adapter: childAdapter, worktreeManager: new WorktreeManager(root, { git: gitAdapter }), generation });
       const integration = new IntegrationManager({ generation, integrate, test });
+      let revision = baseRevision;
       while (scheduler.ready().length) {
         const started = scheduler.ready().map((unit) => scheduler.start(unit.unit_id));
-        const results = await Promise.all(started.map((unit) => runner.run(unit, { baseRevision, prompt: `${prompt}\n\nUnit: ${unit.unit_id}\n${unit.purpose}` })));
-        for (const result of results) { scheduler.complete(result.unit_id, result); await integration.integrateResult(result, { generation }); scheduler.markIntegrated(result.unit_id); }
+        const results = await Promise.all(started.map((unit) => runner.run(unit, { baseRevision: revision, prompt: `${prompt}\n\nUnit: ${unit.unit_id}\n${unit.purpose}` })));
+        for (const result of results) { scheduler.complete(result.unit_id, result); await integration.integrateResult(result, { generation }); scheduler.markIntegrated(result.unit_id); revision = result.commit ?? revision; }
       }
       const pending = scheduler.snapshot().units.filter((unit) => !['INTEGRATED', 'SUCCEEDED'].includes(unit.status));
       if (pending.length) throw new Error(`execution plan did not converge: ${pending.map((unit) => unit.unit_id).join(', ')}`);

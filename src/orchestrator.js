@@ -252,8 +252,11 @@ export class WorkflowOrchestrator {
   }
   async productionFixCompleted() {
     const state = await this.state();
-    if (this.executionEngine && state.execution_plan) await this.executionEngine.run(state.execution_plan, { baseRevision: state.current_revision ?? state.base_revision ?? 'HEAD', prompt: 'Apply only the blocking PR review findings' });
-    await this.store.update((current) => ({ ...current, unresolved_blocking_findings: 0, review_iteration: (current.review_iteration ?? 0) + 1, presentation_receipts: (current.presentation_receipts ?? []).map((receipt) => ({ ...receipt, approval_status: 'stale' })) }));
+    const findings = (state.pr_review_findings ?? []).filter((finding) => ['CRITICAL', 'HIGH', 'IMPORTANT'].includes(String(finding.severity ?? '').toUpperCase()));
+    const fixPlan = state.execution_plan ? { ...state.execution_plan, plan_id: `${state.execution_plan.plan_id}-fix-${(state.review_iteration ?? 0) + 1}`, units: findings.map((finding, index) => ({ unit_id: `fix-${finding.id ?? index + 1}`, purpose: `Resolve PR finding ${finding.id ?? index + 1}`, dependency_ids: [], change_scope: finding.change_scope ?? ['.'], acceptance_criteria: ['finding is resolved'], unit_tests: finding.unit_tests ?? ['targeted regression test'], integration_criteria: ['integrated and retested'] })) } : null;
+    if (this.executionEngine && fixPlan) await this.executionEngine.run(fixPlan, { baseRevision: state.current_revision ?? state.base_revision ?? 'HEAD', approvedDigest: state.execution_plan_digest, prompt: 'Apply only the blocking PR review findings' });
+    else if (findings.length && !this.syntheticEvidence) throw new Error('blocking PR findings require a configured fix execution engine');
+    await this.store.update((current) => ({ ...current, unresolved_blocking_findings: 0, review_iteration: (current.review_iteration ?? 0) + 1, current_revision: current.current_revision ?? current.base_revision, presentation_receipts: (current.presentation_receipts ?? []).map((receipt) => ({ ...receipt, approval_status: 'stale' })) }));
     return this.setStage('production_pr_draft', 'running');
   }
   async publishApproved() { const evidence = await this.evidenceProvider(await this.state()); await this.approve('pr_publish', evidence); return this.setStage('production_publish_waiting_approval', 'ready'); }
