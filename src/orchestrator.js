@@ -44,7 +44,7 @@ export class WorkflowOrchestrator {
     const response = parseResponse(await runner.run({ taskId: request.task_id, iteration: request.iteration, messageId: `${operation}-${state.revision}`, project: actual, workspace: state.project_id, role, stage, message: JSON.stringify(request), conversationId }));
     const persisted = await this.state(); const actualConversationId = persisted.conversation.conversation_id;
     const artifact = await writeArtifact(this.productPath, { projectId: state.project_id, stage, workId: state.work_id, artifactType: operation, version: state.revision + 1 }, response.artifact ?? JSON.stringify(response, null, 2));
-    await this.store.update((current) => ({ ...current, artifacts: [...(current.artifacts ?? []), { kind: operation, path: artifact, version: current.revision + 1 }] }));
+    await this.store.update((current) => ({ ...current, artifacts: [...(current.artifacts ?? []), { kind: operation, path: artifact, version: current.revision + 1 }], ...(response.execution_plan ? { execution_plan: response.execution_plan } : {}) }));
     return { ...response, conversation_id: actualConversationId, project_id: actual.id ?? actual.name };
   }
   async next() {
@@ -146,7 +146,7 @@ export class WorkflowOrchestrator {
   }
   async begin() { await this.store.setup({ project_id: 'sample-product' }); await this.store.update((s) => ({ ...s, work_id: 'fixture-work' })); await ensureOrchestrator(this.store); await this.chatgptStep('prototype_design', 'prototype_design'); return this.setStage('prototype_design', 'waiting_for_chatgpt'); }
   async prototypeDesignApproved() { await this.approve('prototype_implementation'); return this.setStage('prototype_implementation', 'running'); }
-  async prototypeImplemented() { await this.chatgptStep('prototype_evaluation', 'prototype_evaluation'); return this.setStage('prototype_evaluation', 'waiting_for_chatgpt'); }
+  async prototypeImplemented() { const state = await this.state(); if (this.executionEngine && state.execution_plan?.stage === 'prototype') { const execution = await this.executionEngine.run(state.execution_plan, { baseRevision: state.current_revision ?? state.base_revision ?? 'HEAD', prompt: 'Execute the approved prototype units' }); await this.store.update((current) => ({ ...current, execution_result: execution, current_revision: execution.units.at(-1)?.result?.commit ?? current.current_revision })); } await this.chatgptStep('prototype_evaluation', 'prototype_evaluation'); return this.setStage('prototype_evaluation', 'waiting_for_chatgpt'); }
   async evaluatePrototype(decision) {
     if (!['ITERATE', 'PROMOTE_CANDIDATE', 'STOP'].includes(decision)) throw new Error(`invalid prototype decision: ${decision}`);
     if (decision === 'ITERATE') return this.setStage('prototype_implementation', 'waiting_for_human');
