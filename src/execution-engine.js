@@ -15,11 +15,11 @@ export function createExecutionEngine({ root, childAdapter, gitAdapter, integrat
       while (scheduler.ready().length) {
         const started = scheduler.ready().map((unit) => scheduler.start(unit.unit_id));
         const results = await Promise.all(started.map((unit) => runner.run(unit, { baseRevision: revision, prompt: `${prompt}\n\nUnit: ${unit.unit_id}\n${unit.purpose}` })));
-        for (const result of results) { scheduler.complete(result.unit_id, result); await integration.integrateResult(result, { generation }); scheduler.markIntegrated(result.unit_id); revision = result.commit ?? revision; }
+        for (const result of results) { scheduler.complete(result.unit_id, result); const integrated = await integration.integrateResult(result, { generation }); scheduler.markIntegrated(result.unit_id); revision = integrated.integrated_revision ?? revision; }
       }
       const pending = scheduler.snapshot().units.filter((unit) => !['INTEGRATED', 'SUCCEEDED'].includes(unit.status));
       if (pending.length) throw new Error(`execution plan did not converge: ${pending.map((unit) => unit.unit_id).join(', ')}`);
-      return { plan_id: plan.plan_id, generation, units: scheduler.snapshot().units, final_suite: await integration.finalSuite() };
+      return { plan_id: plan.plan_id, generation, current_revision: revision, units: scheduler.snapshot().units, final_suite: await integration.finalSuite() };
     }
   };
 }
