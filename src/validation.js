@@ -5,6 +5,7 @@ import { STAGES } from './model.js';
 import { nextStage } from './workflow.js';
 
 function matchesType(value, type) {
+  if (Array.isArray(type)) return type.some((candidate) => matchesType(value, candidate));
   if (type === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value);
   if (type === 'array') return Array.isArray(value);
   if (type === 'string') return typeof value === 'string';

@@ -48,6 +48,22 @@ test('production implementation plan requires three qualifying reviews in one de
   assert.equal(c2c.calls.filter((call) => call.operation === 'resumeConversation').length >= 3, true);
 });
 
+test('new Issue path creates and binds a presented Issue artifact before planning', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-issue-path-'));
+  const flow = new WorkflowOrchestrator(root, createFakeGitHubAdapter());
+  await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE');
+  await flow.promotionApproved(); await flow.productionGrilled(); await flow.productionSpecApproved();
+  assert.equal((await flow.state()).stage, 'production_issue_creating');
+  await flow.next();
+  const state = await flow.state();
+  assert.equal(state.stage, 'production_issue_waiting_review');
+  const issue = state.artifacts.find((artifact) => artifact.kind === 'issue');
+  const receipt = await flow.presentArtifact({ artifactPath: issue.path, artifactKind: 'issue', present: async () => ({ success: true, reference: 'test-view' }) });
+  await flow.approve('production_issue_review', { presentation_id: receipt.presentation_id });
+  await flow.next();
+  assert.equal((await flow.state()).stage, 'production_issue_ready');
+});
+
 test('next completes three plan review and improvement rounds before it requests plan approval', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-next-plan-review-'));
   const flow = new WorkflowOrchestrator(root, createFakeGitHubAdapter());

@@ -1,6 +1,6 @@
 export function createFakeGitHubAdapter() {
   const calls = [];
-  return { synthetic: true, calls, async createPullRequest(input) { calls.push({ operation: 'createPullRequest', input }); return { number: 1, head: input.head }; }, async mergePullRequest(input) { calls.push({ operation: 'mergePullRequest', input }); return { merged: true }; } };
+  return { synthetic: true, calls, async createIssue(input) { calls.push({ operation: 'createIssue', input }); return { number: 1, node_id: 'fixture-issue-1', url: 'https://example.invalid/issues/1' }; }, async createPullRequest(input) { calls.push({ operation: 'createPullRequest', input }); return { number: 1, head: input.head }; }, async mergePullRequest(input) { calls.push({ operation: 'mergePullRequest', input }); return { merged: true }; } };
 }
 
 export function createGitHubAdapter({ credentialStore, credentialKey, repository, request }) {

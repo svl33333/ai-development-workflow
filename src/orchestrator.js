@@ -55,7 +55,7 @@ export class WorkflowOrchestrator {
       if (current.stage === 'production_plan_waiting_approval' && (current.qualifying_plan_review_iteration < 3 || current.review_history.some((entry) => entry.unresolved_blocking_findings > 0))) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true };
       }
-      if (current.stage === 'production_issue_waiting_review' && !(current.presentation_receipts ?? []).some((receipt) => receipt.artifact_kind === 'issue' && receipt.approval_status !== 'stale')) {
+      if (current.stage === 'production_issue_waiting_review' && !(current.presentation_receipts ?? []).some((receipt) => receipt.artifact_kind === 'issue' && receipt.approval_status === 'pending' && JSON.stringify(receipt.issue_identity) === JSON.stringify(current.issue_identity) && receipt.work_id === current.work_id)) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true, reason: 'issue artifact must be presented before approval' };
       }
       try { const approval = await this.loadApproval(gateKind); if (approval.valid !== true || approval.work_id !== current.work_id) throw new Error('invalid approval'); }
@@ -75,7 +75,7 @@ export class WorkflowOrchestrator {
     const before = current.stage;
     if (current.stage === 'prototype_intake') { await this.chatgptStep('prototype_design', 'prototype_design'); await this.setStage('prototype_design', 'waiting_for_chatgpt'); }
     else if (current.stage === 'prototype_implementation') await this.prototypeImplemented();
-    else if (current.stage === 'production_issue_creating') await this.setStage('production_issue_waiting_review', 'waiting_for_human');
+    else if (current.stage === 'production_issue_creating') await this.createProductionIssue();
     else if (current.stage === 'production_issue_ready') await this.issueCreated();
     else if (['production_planning', 'production_plan_review'].includes(current.stage)) await this.planReviewed();
     else if (current.stage === 'production_plan_improvement') await this.planImproved();
@@ -87,7 +87,7 @@ export class WorkflowOrchestrator {
   async approve(kind, extra = {}) {
     const state = await this.state();
     if (kind === 'production_issue_review') {
-      const receipt = (state.presentation_receipts ?? []).find((item) => item.presentation_id === extra.presentation_id && item.artifact_kind === 'issue');
+      const receipt = (state.presentation_receipts ?? []).find((item) => item.presentation_id === extra.presentation_id && item.artifact_kind === 'issue' && item.approval_status === 'pending' && item.work_id === state.work_id && JSON.stringify(item.issue_identity) === JSON.stringify(state.issue_identity));
       if (!receipt) throw new Error('production issue approval requires a current issue presentation receipt');
       const verified = await verifyPresentationReceipt(this.productPath, receipt, { canonicalRevision: extra.canonical_revision ?? receipt.canonical_revision });
       if (!verified.ok) throw new Error('production issue presentation is stale');
@@ -101,8 +101,8 @@ export class WorkflowOrchestrator {
   async presentArtifact({ artifactPath, artifactKind, canonicalRevision = null, present }) {
     const state = await this.state();
     const receipt = await createPresentationReceipt(this.productPath, { path: artifactPath, kind: artifactKind }, { canonicalRevision, present });
-    const persistedReceipt = { ...receipt, approval_status: 'pending' };
-    await this.store.update((current) => ({ ...current, presentation_receipts: [...(current.presentation_receipts ?? []), persistedReceipt] }));
+    const persistedReceipt = { ...receipt, approval_status: 'pending', work_id: state.work_id, issue_identity: state.issue_identity };
+    await this.store.update((current) => ({ ...current, presentation_receipts: [...(current.presentation_receipts ?? []).map((item) => item.artifact_path === persistedReceipt.artifact_path ? { ...item, approval_status: 'stale' } : item), persistedReceipt] }));
     return persistedReceipt;
   }
   async begin() { await this.store.setup({ project_id: 'sample-product' }); await this.store.update((s) => ({ ...s, work_id: 'fixture-work' })); await this.chatgptStep('prototype_design', 'prototype_design'); return this.setStage('prototype_design', 'waiting_for_chatgpt'); }
@@ -116,7 +116,16 @@ export class WorkflowOrchestrator {
   }
   async promotionApproved() { await this.approve('promotion'); return this.setStage('production_grilling', 'running'); }
   async productionGrilled() { return this.setStage('production_spec_waiting_approval', 'waiting_for_human'); }
-  async productionSpecApproved() { await this.approve('production_spec'); return this.setStage('production_issue_ready', 'running'); }
+  async productionSpecApproved() { await this.approve('production_spec'); return this.setStage('production_issue_creating', 'running'); }
+  async createProductionIssue() {
+    const state = await this.state();
+    const body = `# Production Issue\n\n- work_id: ${state.work_id}\n- repository: ${this.expectedRepository}\n- source_stage: ${state.stage}\n\nThis Issue was generated from the approved production specification.\n`;
+    const artifact = await writeArtifact(this.productPath, { projectId: state.project_id, stage: 'production_issue_waiting_review', workId: state.work_id, artifactType: 'production-issue', version: state.revision + 1 }, body);
+    const created = this.github?.createIssue ? await this.github.createIssue({ title: `Production work: ${state.work_id}`, body, repository: this.expectedRepository }) : {};
+    const issueIdentity = { repository: this.expectedRepository, number: created.number ?? null, node_id: created.node_id ?? null, url: created.url ?? null, provisional_id: `${this.expectedRepository}:${state.work_id}` };
+    await this.store.update((current) => ({ ...current, issue_identity: issueIdentity, artifacts: [...(current.artifacts ?? []), { kind: 'issue', path: artifact, version: current.revision + 1 }] }));
+    return this.setStage('production_issue_waiting_review', 'waiting_for_human');
+  }
   async issueCreated() {
     const plan = await this.chatgptStep('production_plan', 'production_planning');
     await this.store.update((state) => ({ ...state, review_context: { ...state.review_context, planning_conversation_id: plan.conversation_id } }));
