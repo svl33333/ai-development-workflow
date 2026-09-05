@@ -40,6 +40,9 @@ function normalizeLegacyState(state) {
   return {
     ...state,
     schema_version: state.schema_version ?? 1,
+    orchestrator_id: state.orchestrator_id ?? null,
+    orchestrator_generation: state.orchestrator_generation ?? 1,
+    orchestrator_status: state.orchestrator_status ?? 'ACTIVE',
     issue_identity: state.issue_identity ?? null,
     connection_binding: state.connection_binding ?? null,
     conversation_registry: state.conversation_registry ?? {},

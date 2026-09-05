@@ -1,0 +1,5 @@
+{
+  "type": "object",
+  "required": ["unit_id", "run_id", "generation", "base_revision", "status", "commit", "tests", "local_review", "artifact_digest"],
+  "properties": {"unit_id": {"type": "string"}, "run_id": {"type": "string"}, "generation": {"type": "integer"}, "base_revision": {"type": "string"}, "status": {"enum": ["SUCCEEDED", "FAILED", "BLOCKED", "CANCELLED"]}, "commit": {"type": ["string", "null"]}, "tests": {"type": "object"}, "local_review": {"type": "object"}, "artifact_digest": {"type": "string"}}
+}

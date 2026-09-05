@@ -10,6 +10,7 @@ import { createRequest, sanitizeRequest, parseResponse, createFakeC2CAdapter } f
 import { desiredProject, verifyProject, verifyProjectBinding } from './adapters/chatgpt-project.js';
 import { nextStage } from './workflow.js';
 import { ConversationRunner } from './conversation-runner.js';
+import { ensureOrchestrator } from './orchestrator-lifecycle.js';
 
 const actions = {
   prototype_intake: 'chatgpt_prototype_design', prototype_design: 'human_approve_prototype_implementation',
@@ -134,7 +135,7 @@ export class WorkflowOrchestrator {
     await this.store.update((current) => ({ ...current, presentation_receipts: [...(current.presentation_receipts ?? []).map((item) => item.artifact_path === persistedReceipt.artifact_path ? { ...item, approval_status: 'stale' } : item), persistedReceipt] }));
     return persistedReceipt;
   }
-  async begin() { await this.store.setup({ project_id: 'sample-product' }); await this.store.update((s) => ({ ...s, work_id: 'fixture-work' })); await this.chatgptStep('prototype_design', 'prototype_design'); return this.setStage('prototype_design', 'waiting_for_chatgpt'); }
+  async begin() { await this.store.setup({ project_id: 'sample-product' }); await this.store.update((s) => ({ ...s, work_id: 'fixture-work' })); await ensureOrchestrator(this.store); await this.chatgptStep('prototype_design', 'prototype_design'); return this.setStage('prototype_design', 'waiting_for_chatgpt'); }
   async prototypeDesignApproved() { await this.approve('prototype_implementation'); return this.setStage('prototype_implementation', 'running'); }
   async prototypeImplemented() { await this.chatgptStep('prototype_evaluation', 'prototype_evaluation'); return this.setStage('prototype_evaluation', 'waiting_for_chatgpt'); }
   async evaluatePrototype(decision) {

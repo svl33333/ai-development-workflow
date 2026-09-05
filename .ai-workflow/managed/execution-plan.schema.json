@@ -1,0 +1,5 @@
+{
+  "type": "object",
+  "required": ["plan_id", "stage", "units", "max_parallel_codex_tasks", "approval_digest"],
+  "properties": {"plan_id": {"type": "string"}, "stage": {"enum": ["prototype", "production"]}, "max_parallel_codex_tasks": {"type": "integer"}, "approval_digest": {"type": "string"}, "units": {"type": "array"}}
+}

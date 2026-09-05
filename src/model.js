@@ -32,6 +32,7 @@ export function initialState(projectId, workflowVersion = 1) {
   const now = new Date().toISOString();
   return {
     workflow_version: workflowVersion, schema_version: 1, adapter_version: 1,
+    orchestrator_id: null, orchestrator_generation: 1, orchestrator_status: 'ACTIVE',
     project_id: projectId, work_id: 'unassigned', stage: 'prototype_intake', status: 'ready',
     agent: 'codex', chatgpt_project: 'prototype', artifacts: [], base_revision: null,
     current_revision: null, next_action: 'create_concept_brief', stop_reason: null, revision: 1,
@@ -43,7 +44,7 @@ export function initialState(projectId, workflowVersion = 1) {
       active_plan_review_non_resumable_reason: null, replacement_history: []
     },
     updated_at: now,
-    conversation: { task_id: null, iteration: 0, project_id: null, project_url: null, conversation_id: null, conversation_url: null, workspace: null, state: 'INIT', last_message_id: null, next_operation: null, failure_reason: null, sent_messages: [] },
+    conversation: { task_id: null, iteration: 0, project_id: null, project_url: null, conversation_id: null, conversation_url: null, workspace: null, role: null, stage: null, state: 'INIT', last_message_id: null, next_operation: null, failure_reason: null, sent_messages: [] },
     agent_state: { agent: 'codex', stage: 'prototype_intake', status: 'ready', started_at: now,
       updated_at: now, waiting_reason: null, next_action: 'create_concept_brief', error: null }
   };
@@ -73,6 +74,8 @@ export function validateState(state) {
     }
   }
   if (state.presentation_receipts !== undefined && !Array.isArray(state.presentation_receipts)) errors.push('presentation_receipts is invalid');
+  if (!Number.isInteger(state.orchestrator_generation) || state.orchestrator_generation < 1) errors.push('orchestrator_generation is invalid');
+  if (!['ACTIVE', 'SUPERSEDED', 'STOPPED'].includes(state.orchestrator_status)) errors.push('orchestrator_status is invalid');
   if (state.conversation_registry !== undefined && (!state.conversation_registry || typeof state.conversation_registry !== 'object' || Array.isArray(state.conversation_registry))) errors.push('conversation_registry is invalid');
   return errors;
 }
