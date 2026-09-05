@@ -222,6 +222,7 @@ test('legacy review counters and mixed review conversations cannot approve a pro
   await flow.store.update((state) => ({ ...state, work_id: 'legacy-work', stage: 'production_plan_waiting_approval', status: 'waiting_for_human', next_action: 'codex_implement', plan_review_iteration: 3, qualifying_plan_review_iteration: 0, review_history: [] , agent_state: { ...state.agent_state, stage: 'production_plan_waiting_approval', status: 'waiting_for_human', next_action: 'codex_implement' } }));
   await assert.rejects(() => flow.planApproved(), /qualifying review rounds/);
   await fs.writeFile(path.join(root, 'plan.md'), 'plan');
+  await flow.store.update((state) => ({ ...state, artifacts: [{ kind: 'plan', path: 'plan.md', version: state.revision }] }));
   await flow.presentArtifact({ artifactPath: 'plan.md', artifactKind: 'plan', present: async () => ({ success: true, reference: 'test-plan' }) });
   await flow.approve('production_plan');
   const bypass = await flow.next();

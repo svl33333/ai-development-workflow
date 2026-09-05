@@ -65,7 +65,8 @@ export class WorkflowOrchestrator {
       if (requiredPresentationKinds && !(await this.hasCurrentPresentation(current, requiredPresentationKinds))) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true, reason: 'review artifact must be presented before approval' };
       }
-      if (current.stage === 'production_issue_waiting_review' && !(current.presentation_receipts ?? []).some((receipt) => receipt.artifact_kind === 'issue' && receipt.approval_status === 'pending' && JSON.stringify(receipt.issue_identity) === JSON.stringify(current.issue_identity) && receipt.work_id === current.work_id)) {
+      const currentIssueArtifact = [...(current.artifacts ?? [])].reverse().find((artifact) => artifact.kind === 'issue');
+      if (current.stage === 'production_issue_waiting_review' && !(current.presentation_receipts ?? []).some((receipt) => receipt.artifact_kind === 'issue' && receipt.artifact_path === currentIssueArtifact?.path && receipt.approval_status === 'pending' && JSON.stringify(receipt.issue_identity) === JSON.stringify(current.issue_identity) && receipt.work_id === current.work_id)) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true, reason: 'issue artifact must be presented before approval' };
       }
       try { const approval = await this.loadApproval(gateKind); if (approval.valid !== true || approval.work_id !== current.work_id) throw new Error('invalid approval'); }
@@ -97,7 +98,8 @@ export class WorkflowOrchestrator {
   async approve(kind, extra = {}) {
     const state = await this.state();
     if (kind === 'production_issue_review') {
-      const receipt = (state.presentation_receipts ?? []).find((item) => item.presentation_id === extra.presentation_id && item.artifact_kind === 'issue' && item.approval_status === 'pending' && item.work_id === state.work_id && JSON.stringify(item.issue_identity) === JSON.stringify(state.issue_identity));
+      const currentIssueArtifact = [...(state.artifacts ?? [])].reverse().find((artifact) => artifact.kind === 'issue');
+      const receipt = (state.presentation_receipts ?? []).find((item) => item.presentation_id === extra.presentation_id && item.artifact_kind === 'issue' && item.artifact_path === currentIssueArtifact?.path && item.approval_status === 'pending' && item.work_id === state.work_id && JSON.stringify(item.issue_identity) === JSON.stringify(state.issue_identity));
       if (!receipt) throw new Error('production issue approval requires a current issue presentation receipt');
       const verified = await verifyPresentationReceipt(this.productPath, receipt, { canonicalRevision: extra.canonical_revision ?? receipt.canonical_revision });
       if (!verified.ok) throw new Error('production issue presentation is stale');
@@ -116,8 +118,10 @@ export class WorkflowOrchestrator {
     return approval;
   }
   async hasCurrentPresentation(state, kinds) {
+    const currentArtifact = [...(state.artifacts ?? [])].reverse().find((artifact) => kinds.includes(artifact.kind));
+    if (!currentArtifact) return false;
     for (const receipt of state.presentation_receipts ?? []) {
-      if (receipt.work_id !== state.work_id || receipt.approval_status !== 'pending' || !kinds.includes(receipt.artifact_kind)) continue;
+      if (receipt.work_id !== state.work_id || receipt.approval_status !== 'pending' || receipt.artifact_path !== currentArtifact.path || !kinds.includes(receipt.artifact_kind)) continue;
       const verified = await verifyPresentationReceipt(this.productPath, receipt, { canonicalRevision: receipt.canonical_revision });
       if (verified.ok) return true;
     }

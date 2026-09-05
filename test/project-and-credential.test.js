@@ -35,6 +35,7 @@ test('production composition prevents a GitHub mutation when the repository cred
   const flow = createProductionWorkflow({ productPath: root, c2c: createFakeC2CAdapter(), projectResolver: resolver, credentialStore: store, credentialKey: 'expired', repository: 'owner/repo', request: async () => ({ status: 201 }), evidenceProvider: async () => ({ pr_number: 1, target_revision: 'head', test_run_id: 'run', test_artifact: 'test.md', review_artifact: 'review.md', review_iteration: 1, unresolved_blocking_findings: 0 }) });
   await flow.store.setup({ project_id: 'runtime-project' }); await flow.store.update((state) => ({ ...state, work_id: 'runtime-work' }));
   await fs.writeFile(path.join(root, 'pr-review.md'), 'review');
+  await flow.store.update((state) => ({ ...state, artifacts: [{ kind: 'pr_review', path: 'pr-review.md', version: state.revision }] }));
   await flow.presentArtifact({ artifactPath: 'pr-review.md', artifactKind: 'pr_review', present: async () => ({ success: true, reference: 'test-pr-review' }) });
   await flow.approve('pr_publish', { pr_number: 1, target_revision: 'head', test_run_id: 'run', test_artifact: 'test.md', review_artifact: 'review.md', review_iteration: 1, unresolved_blocking_findings: 0 });
   await assert.rejects(() => flow.publish(), /credential is expired/);
