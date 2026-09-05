@@ -9,6 +9,10 @@ status: ready
 agent: codex
 next_action: create_concept_brief
 revision: 1
+plan_review_iteration: 0
+qualifying_plan_review_iteration: 0
+review_history: []
+review_context: {}
 updated_at: <timestamp>
 agent_state:
   agent: codex
