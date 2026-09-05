@@ -8,9 +8,10 @@ export class ChildTaskRunner {
     if (!this.allowSyntheticWorktree && !this.worktreeManager?.git) throw new Error('a real Git worktree adapter is required');
     const runId = unit.run_id ?? crypto.randomUUID();
     const worktree = await this.worktreeManager.create({ unitId: unit.unit_id, runId, baseRevision });
-    const capabilities = { cwd: worktree.path, writable_paths: [worktree.path], can_publish: false, can_merge: false, can_modify_parent_state: false };
+    const capabilities = Object.freeze({ cwd: worktree.path, writable_paths: [worktree.path], allowed_git_commands: ['status', 'diff', 'add', 'commit'], env: {}, can_publish: false, can_merge: false, can_modify_parent_state: false });
     const execution = await this.adapter.run({ runId, unit, prompt, capabilities });
     const changedPaths = execution.changed_paths ?? [];
+    if (!this.allowSyntheticWorktree && !Array.isArray(execution.changed_paths)) throw new Error(`child task did not return a changed-path manifest: ${unit.unit_id}`);
     const scope = unit.change_scope ?? [];
     if (changedPaths.some((changedPath) => !scope.some((allowedPath) => changedPath === allowedPath || changedPath.startsWith(`${allowedPath.replace(/\\\\$/, '')}/`)))) {
       throw new Error(`child task changed files outside its declared scope: ${unit.unit_id}`);

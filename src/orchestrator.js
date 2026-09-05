@@ -33,7 +33,7 @@ export class WorkflowOrchestrator {
   async setStage(stage, status = 'ready', nextAction = actions[stage]) {
     const action = nextAction ?? 'none'; const current = await this.assertActiveGeneration();
     const artifact = await writeArtifact(this.productPath, { projectId: current.project_id, stage, workId: current.work_id, artifactType: 'stage-log', version: current.revision + 1 }, `# Stage transition\n\n- from: ${current.stage}\n- to: ${stage}\n- status: ${status}\n- next_action: ${action}`);
-    return this.store.update((state) => ({ ...state, stage, status, next_action: action, artifacts: [...(state.artifacts ?? []), { kind: 'stage-log', path: artifact, version: state.revision + 1 }], agent_state: { ...state.agent_state, stage, status, next_action: action, waiting_reason: status.includes('waiting') ? action : null, error: null } }));
+    return this.store.fencedUpdate(this.generation, (state) => ({ ...state, stage, status, next_action: action, artifacts: [...(state.artifacts ?? []), { kind: 'stage-log', path: artifact, version: state.revision + 1 }], agent_state: { ...state.agent_state, stage, status, next_action: action, waiting_reason: status.includes('waiting') ? action : null, error: null } }));
   }
   async chatgptStep(operation, stage, { conversationId = null } = {}) {
     if (!this.c2c) throw Object.assign(new Error('live ChatGPT C2C adapter is required'), { code: 4 });
@@ -72,7 +72,7 @@ export class WorkflowOrchestrator {
       if (current.stage === 'production_issue_waiting_review' && !(current.presentation_receipts ?? []).some((receipt) => receipt.artifact_kind === 'issue' && receipt.artifact_path === currentIssueArtifact?.path && receipt.approval_status === 'pending' && JSON.stringify(receipt.issue_identity) === JSON.stringify(current.issue_identity) && receipt.work_id === current.work_id)) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true, reason: 'issue artifact must be presented before approval' };
       }
-      try { const approval = await this.loadApproval(gateKind); if (approval.valid !== true || approval.work_id !== current.work_id) throw new Error('invalid approval'); }
+      try { const approval = await this.loadApproval(gateKind); if (approval.valid !== true || approval.work_id !== current.work_id) throw new Error('invalid approval'); const boundKinds = { prototype_implementation: ['prototype_design'], production_spec: ['spec', 'production_spec'], production_plan: ['plan', 'production_plan'] }[gateKind]; if (boundKinds && !this.syntheticEvidence && !(await this.approvalMatchesCurrentPresentation(current, approval, boundKinds))) throw new Error('stale approval binding'); if (gateKind === 'production_plan' && (!approval.manifest_digest || approval.manifest_digest !== current.execution_plan_digest)) throw new Error('stale execution-plan approval'); }
       catch { return { stage: current.stage, next_stage: target, mutation: false, requires_approval: true }; }
       if (current.stage === 'prototype_design') await this.setStage('prototype_implementation', 'running');
       else if (current.stage === 'promotion_waiting_approval') await this.setStage('production_grilling', 'running');
@@ -127,8 +127,14 @@ export class WorkflowOrchestrator {
     }
     const approval = createApproval({ kind, approved_by: 'human', work_id: state.work_id === 'unassigned' ? 'fixture-work' : state.work_id, artifact_version: 1, ...extra });
     await fs.mkdir(path.join(this.productPath, '.ai-workflow', 'approvals'), { recursive: true });
+    await this.store.fencedUpdate(this.generation, (current) => current);
     await fs.writeFile(path.join(this.productPath, '.ai-workflow', 'approvals', `${kind}.json`), JSON.stringify(approval, null, 2));
     return approval;
+  }
+  async approvalMatchesCurrentPresentation(state, approval, kinds) {
+    const artifact = [...(state.artifacts ?? [])].reverse().find((item) => kinds.includes(item.kind));
+    const receipt = [...(state.presentation_receipts ?? [])].reverse().find((item) => item.work_id === state.work_id && item.approval_status === 'pending' && item.artifact_path === artifact?.path && kinds.includes(item.artifact_kind));
+    return Boolean(receipt && receipt.presentation_id === approval.presentation_id && receipt.digest === approval.artifact_digest && receipt.canonical_revision === approval.canonical_revision && (await verifyPresentationReceipt(this.productPath, receipt, { canonicalRevision: receipt.canonical_revision })).ok);
   }
   async hasCurrentPresentation(state, kinds) {
     const currentArtifact = [...(state.artifacts ?? [])].reverse().find((artifact) => kinds.includes(artifact.kind));

@@ -50,6 +50,9 @@ function normalizeLegacyState(state) {
     plan_review_iteration: state.plan_review_iteration ?? 0,
     qualifying_plan_review_iteration: state.qualifying_plan_review_iteration ?? 0,
     review_history: state.review_history ?? [],
+    prototype_review_iteration: state.prototype_review_iteration ?? 0,
+    qualifying_prototype_review_iteration: state.qualifying_prototype_review_iteration ?? 0,
+    prototype_model_confirmed: state.prototype_model_confirmed ?? false,
     review_context: state.review_context ?? {
       planning_conversation_id: null, active_plan_review_conversation_id: null,
       active_plan_review_project_id: null, active_plan_review_history_revision: 0,
@@ -112,6 +115,12 @@ export class StateStore {
       const temp = `${nextPath}.tmp-${process.pid}`; await fs.writeFile(temp, serializeState(next, current.body)); await fs.rename(temp, nextPath);
       if (current.path !== nextPath) await fs.rm(current.path, { force: true });
       this.activeWorkId = next.work_id; this.projectId = next.project_id; return next;
+    });
+  }
+  async fencedUpdate(generation, mutator) {
+    return this.update((state) => {
+      if (state.orchestrator_generation !== generation || state.orchestrator_status !== 'ACTIVE') throw Object.assign(new Error('orchestrator generation is superseded'), { code: 3 });
+      return mutator(state);
     });
   }
   async withLock(work, fn) {
