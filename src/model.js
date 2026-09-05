@@ -1,7 +1,7 @@
 export const STAGES = [
   'prototype_intake', 'prototype_design', 'prototype_implementation', 'prototype_evaluation',
   'promotion_waiting_approval', 'production_grilling', 'production_spec_waiting_approval',
-  'production_issue_ready', 'production_planning', 'production_plan_review',
+  'production_issue_ready', 'production_planning', 'production_plan_review', 'production_plan_improvement',
   'production_plan_waiting_approval', 'production_implementation', 'production_pr_draft',
   'production_pr_review', 'production_fix', 'production_publish_waiting_approval',
   'production_published', 'production_merge_waiting_approval', 'completed', 'stopped', 'blocked'
@@ -9,8 +9,24 @@ export const STAGES = [
 
 export const APPROVAL_KINDS = [
   'prototype_implementation', 'promotion', 'production_spec', 'production_plan',
-  'pr_publish', 'pr_merge', 'destructive_operation', 'spec_change', 'update'
+  'pr_publish', 'pr_merge', 'destructive_operation', 'spec_change', 'update',
+  'review_conversation_replacement'
 ];
+
+export function deriveQualifyingPlanReviewIteration(reviewHistory, activeConversationId) {
+  if (!activeConversationId || !Array.isArray(reviewHistory)) return 0;
+  const qualifying = reviewHistory.filter((review) => review.stage === 'production_plan_review'
+    && review.role === 'plan_review'
+    && review.conversation_id === activeConversationId
+    && review.improved === true
+    && review.dispositions_complete === true);
+  let expectedRound = 1;
+  for (const review of qualifying) {
+    if (review.round !== expectedRound) return expectedRound - 1;
+    expectedRound += 1;
+  }
+  return qualifying.length;
+}
 
 export function initialState(projectId, workflowVersion = 1) {
   const now = new Date().toISOString();
@@ -19,22 +35,41 @@ export function initialState(projectId, workflowVersion = 1) {
     project_id: projectId, work_id: 'unassigned', stage: 'prototype_intake', status: 'ready',
     agent: 'codex', chatgpt_project: 'prototype', artifacts: [], base_revision: null,
     current_revision: null, next_action: 'create_concept_brief', stop_reason: null, revision: 1,
+    plan_review_iteration: 0, qualifying_plan_review_iteration: 0, review_history: [],
+    review_context: {
+      planning_conversation_id: null, active_plan_review_conversation_id: null,
+      active_plan_review_project_id: null, active_plan_review_history_revision: 0,
+      active_plan_review_non_resumable_reason: null, replacement_history: []
+    },
     updated_at: now,
+    conversation: { task_id: null, iteration: 0, project_id: null, project_url: null, conversation_id: null, conversation_url: null, workspace: null, state: 'INIT', last_message_id: null, next_operation: null, failure_reason: null, sent_messages: [] },
     agent_state: { agent: 'codex', stage: 'prototype_intake', status: 'ready', started_at: now,
       updated_at: now, waiting_reason: null, next_action: 'create_concept_brief', error: null }
   };
 }
 
 export function validateState(state) {
-  const required = ['workflow_version', 'project_id', 'work_id', 'stage', 'status', 'next_action', 'revision', 'updated_at'];
+  const required = ['workflow_version', 'project_id', 'work_id', 'stage', 'status', 'next_action', 'revision', 'plan_review_iteration', 'qualifying_plan_review_iteration', 'review_history', 'review_context', 'updated_at'];
   const errors = required.filter((key) => state[key] === undefined || state[key] === null).map((key) => `${key} is required`);
   if (!STAGES.includes(state.stage)) errors.push(`unknown stage: ${state.stage}`);
+  if (!Number.isInteger(state.plan_review_iteration) || state.plan_review_iteration < 0) errors.push('plan_review_iteration is invalid');
+  if (!Number.isInteger(state.qualifying_plan_review_iteration) || state.qualifying_plan_review_iteration < 0) errors.push('qualifying_plan_review_iteration is invalid');
+  if (!Array.isArray(state.review_history)) errors.push('review_history is invalid');
+  if (!state.review_context || typeof state.review_context !== 'object' || !Array.isArray(state.review_context.replacement_history)) errors.push('review_context is invalid');
   if (!state.agent_state || typeof state.agent_state !== 'object') errors.push('agent_state is required');
   else for (const key of ['agent', 'stage', 'status', 'started_at', 'updated_at', 'waiting_reason', 'next_action', 'error']) {
     if (!(key in state.agent_state)) errors.push(`agent_state.${key} is required`);
   }
   if (state.agent_state && (state.agent_state.stage !== state.stage || state.agent_state.next_action !== state.next_action)) {
     errors.push('agent_state disagrees with top-level stage or next_action');
+  }
+  if (state.conversation !== undefined && (!state.conversation || typeof state.conversation !== 'object' || !Array.isArray(state.conversation.sent_messages))) errors.push('conversation state is invalid');
+  if (state.conversation && !['INIT', 'PREPARED', 'SENDING', 'AMBIGUOUS', 'EXECUTING', 'EXECUTED', 'REVIEW', 'DONE', 'BLOCKED'].includes(state.conversation.state)) errors.push('conversation state is unknown');
+  if (state.conversation && state.conversation.state !== 'INIT') {
+    for (const key of ['task_id', 'project_id', 'workspace', 'role', 'stage', 'conversation_id', 'last_message_id', 'next_operation']) if (!state.conversation[key]) errors.push(`conversation.${key} is required outside INIT`);
+    for (const entry of state.conversation.sent_messages) {
+      if (!entry.task_id || !Number.isInteger(entry.iteration) || !entry.message_id || !entry.conversation_id || !['prepared', 'sending', 'confirmed', 'ambiguous'].includes(entry.delivery_state)) errors.push('conversation.sent_messages entry is invalid');
+    }
   }
   return errors;
 }

@@ -36,6 +36,21 @@ export function parseFrontMatter(text) {
   return { meta, body: text.slice(end + 4) };
 }
 
+function normalizeLegacyState(state) {
+  return {
+    ...state,
+    plan_review_iteration: state.plan_review_iteration ?? 0,
+    qualifying_plan_review_iteration: state.qualifying_plan_review_iteration ?? 0,
+    review_history: state.review_history ?? [],
+    review_context: state.review_context ?? {
+      planning_conversation_id: null, active_plan_review_conversation_id: null,
+      active_plan_review_project_id: null, active_plan_review_history_revision: 0,
+      active_plan_review_non_resumable_reason: null, replacement_history: []
+    },
+    conversation: state.conversation ?? initialState(state.project_id ?? 'legacy').conversation
+  };
+}
+
 function yamlValue(value, indent = '') {
   if (Array.isArray(value)) return `${indent}${JSON.stringify(value)}`;
   if (value && typeof value === 'object') return Object.entries(value).map(([k, v]) => `${indent}${k}: ${v && typeof v === 'object' && !Array.isArray(v) ? `\n${yamlValue(v, `${indent}  `)}` : v === null ? 'null' : Array.isArray(v) ? JSON.stringify(v) : String(v)}`).join('\n');
@@ -63,7 +78,10 @@ export class StateStore {
     const candidates = [];
     for (const file of files) {
       const statePath = path.join(this.stateDir, file);
-      try { const parsed = parseFrontMatter(await fs.readFile(statePath, 'utf8')); candidates.push({ statePath, parsed }); } catch { /* invalid candidates are reported below */ }
+      try {
+        const parsed = parseFrontMatter(await fs.readFile(statePath, 'utf8'));
+        candidates.push({ statePath, parsed: { ...parsed, meta: normalizeLegacyState(parsed.meta) } });
+      } catch { /* invalid candidates are reported below */ }
     }
     if (!candidates.length) throw new Error('no valid state file found');
     const scoped = candidates.filter(({ parsed }) => (!projectId || parsed.meta.project_id === projectId) && (!workId || parsed.meta.work_id === workId));
