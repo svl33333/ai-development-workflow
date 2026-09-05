@@ -1,5 +1,30 @@
 {
   "type": "object",
   "required": ["plan_id", "stage", "units", "max_parallel_codex_tasks", "approval_digest"],
-  "properties": {"plan_id": {"type": "string"}, "stage": {"enum": ["prototype", "production"]}, "max_parallel_codex_tasks": {"type": "integer"}, "approval_digest": {"type": "string"}, "units": {"type": "array"}}
+  "properties": {
+    "plan_id": {"type": "string"},
+    "stage": {"enum": ["prototype", "production"]},
+    "max_parallel_codex_tasks": {"type": "integer"},
+    "approval_digest": {"type": "string"},
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["unit_id", "purpose", "dependency_ids", "change_scope", "acceptance_criteria", "unit_tests", "integration_criteria"],
+        "properties": {
+          "unit_id": {"type": "string"},
+          "purpose": {"type": "string"},
+          "dependency_ids": {"type": "array", "items": {"type": "string"}},
+          "change_scope": {"type": "array", "items": {"type": "string"}},
+          "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+          "unit_tests": {"type": "array", "items": {"type": "string"}},
+          "integration_criteria": {"type": "array", "items": {"type": "string"}},
+          "hypothesis": {"type": "string"},
+          "success_criteria": {"type": "array", "items": {"type": "string"}},
+          "failure_criteria": {"type": "array", "items": {"type": "string"}},
+          "evaluation_method": {"type": "string"}
+        }
+      }
+    }
+  }
 }

@@ -10,7 +10,7 @@ from .github_issue import GitHubIssueTransport
 from .issue_guard import approve_final_payload, approve_payload, prepare_payload, publish_payload
 from .issue_state import load_state, transition_state
 from .onboarding import run_onboarding
-from .bridge import dispatch
+from .bridge import dispatch, handle_bridge_request
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "bridge":
         request = json.loads(args.request)
-        code, response = dispatch(request, lambda payload: {"operation": payload["operation"], "accepted": True})
+        code, response = dispatch(request, handle_bridge_request)
         print(json.dumps(response, ensure_ascii=False, indent=2))
         return code
     if args.command == "record-change":

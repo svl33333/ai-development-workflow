@@ -25,12 +25,12 @@ export async function ensureOrchestrator(store, { orchestratorId = crypto.random
   const current = await store.state?.() ?? (await store.read()).state;
   if (current.orchestrator_status === 'ACTIVE' && current.orchestrator_id) return { reused: true, orchestrator_id: current.orchestrator_id, generation: current.orchestrator_generation };
   const nextGeneration = generation ?? (current.orchestrator_generation ?? 0) + 1;
-  const next = await store.update((state) => ({ ...state, orchestrator_id: orchestratorId, orchestrator_generation: nextGeneration, orchestrator_status: 'ACTIVE' }));
+  const next = await store.update((state) => ({ ...state, orchestrator_id: orchestratorId, orchestrator_generation: nextGeneration, orchestrator_status: 'ACTIVE' }), current.revision);
   return { reused: false, orchestrator_id: next.orchestrator_id, generation: next.orchestrator_generation, state: next };
 }
 
 export async function supersedeOrchestrator(store, { successorId = crypto.randomUUID() } = {}) {
   const current = await store.read();
-  const next = await store.update((state) => ({ ...state, orchestrator_id: successorId, orchestrator_generation: state.orchestrator_generation + 1, orchestrator_status: 'ACTIVE' }));
+  const next = await store.update((state) => ({ ...state, orchestrator_id: successorId, orchestrator_generation: state.orchestrator_generation + 1, orchestrator_status: 'ACTIVE', previous_orchestrator_id: current.state.orchestrator_id, previous_orchestrator_status: 'SUPERSEDED' }), current.state.revision);
   return { previous_generation: current.state.orchestrator_generation, generation: next.orchestrator_generation, orchestrator_id: successorId };
 }

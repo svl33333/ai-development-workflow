@@ -19,7 +19,7 @@ test('production Issue review is an explicit approval gate after Issue creation'
 
 test('approval kinds bind dangerous operations and artifacts', () => {
   assert.throws(() => createApproval({ kind: 'destructive_operation', approved_by: 'human', work_id: 'w' }), /operation_id/);
-  assert.equal(createApproval({ kind: 'production_spec', approved_by: 'human', work_id: 'w', artifact_version: 1 }).valid, true);
+  assert.equal(createApproval({ kind: 'production_spec', approved_by: 'human', work_id: 'w', artifact_version: 1, presentation_id: 'p', artifact_digest: 'd', canonical_revision: 'r' }).valid, true);
 });
 
 test('C2C request is bounded and secret-like content is rejected', () => {

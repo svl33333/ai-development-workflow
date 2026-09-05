@@ -9,6 +9,7 @@ from .git_source import clone_at_commit, install_managed_files
 from .git_source import validate_managed_path
 from .persistence import write_json_atomically
 from .persistence import calculate_file_sha256
+from .bridge import BridgeRequest, handle_bridge_request
 
 
 def rollback_installed_files(product_root: Path, files: list[str]) -> None:
@@ -75,4 +76,5 @@ def run_onboarding(
         if temporary_directory is not None:
             temporary_directory.cleanup()
     write_json_atomically(evidence_path, evidence)
+    handle_bridge_request({**BridgeRequest(product_root.name, "onboarding", "ensure_orchestrator").as_dict(), "product_path": str(product_root)})
     return evidence

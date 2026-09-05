@@ -1,9 +1,11 @@
 import { WorkflowOrchestrator } from './orchestrator.js';
 import { createGitHubAdapter } from './adapters/github.js';
+import { createIssueGateway } from './adapters/issue-gateway.js';
 
-export function createProductionWorkflow({ productPath, c2c, projectResolver, credentialStore, credentialKey, repository, request, evidenceProvider }) {
+export function createProductionWorkflow({ productPath, c2c, projectResolver, credentialStore, credentialKey, repository, request, evidenceProvider, issueGateway }) {
   const github = createGitHubAdapter({ credentialStore, credentialKey, repository, request });
-  return new WorkflowOrchestrator(productPath, github, evidenceProvider, c2c, null, projectResolver, repository);
+  if (!issueGateway) throw new Error('production workflow requires an Issue #4 gateway');
+  return new WorkflowOrchestrator(productPath, github, evidenceProvider, c2c, null, projectResolver, repository, null, createIssueGateway(issueGateway));
 }
 
 export function createCodexAdapter({ exec = async () => ({ exitCode: 0, output: '' }) } = {}) {
