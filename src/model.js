@@ -37,7 +37,7 @@ export function initialState(projectId, workflowVersion = 1) {
     agent: 'codex', chatgpt_project: 'prototype', artifacts: [], base_revision: null,
     current_revision: null, next_action: 'create_concept_brief', stop_reason: null, revision: 1,
     plan_review_iteration: 0, qualifying_plan_review_iteration: 0, review_history: [],
-    prototype_review_iteration: 0, qualifying_prototype_review_iteration: 0, prototype_model_confirmed: false,
+    prototype_review_iteration: 0, qualifying_prototype_review_iteration: 0, prototype_model_confirmed: false, prototype_review_conversation_id: null, prototype_required_model: null, prototype_actual_model: null, prototype_model_user_confirmed: false,
     issue_identity: null, connection_binding: null, conversation_registry: {}, presentation_receipts: [],
     review_context: {
       planning_conversation_id: null, active_plan_review_conversation_id: null,
@@ -60,6 +60,8 @@ export function validateState(state) {
   if (state.prototype_review_iteration !== undefined && (!Number.isInteger(state.prototype_review_iteration) || state.prototype_review_iteration < 0)) errors.push('prototype_review_iteration is invalid');
   if (state.qualifying_prototype_review_iteration !== undefined && (!Number.isInteger(state.qualifying_prototype_review_iteration) || state.qualifying_prototype_review_iteration < 0)) errors.push('qualifying_prototype_review_iteration is invalid');
   if (state.prototype_model_confirmed !== undefined && typeof state.prototype_model_confirmed !== 'boolean') errors.push('prototype_model_confirmed is invalid');
+  for (const key of ['prototype_review_conversation_id', 'prototype_required_model', 'prototype_actual_model']) if (state[key] !== undefined && state[key] !== null && typeof state[key] !== 'string') errors.push(`${key} is invalid`);
+  if (state.prototype_model_user_confirmed !== undefined && typeof state.prototype_model_user_confirmed !== 'boolean') errors.push('prototype_model_user_confirmed is invalid');
   if (!Array.isArray(state.review_history)) errors.push('review_history is invalid');
   if (!state.review_context || typeof state.review_context !== 'object' || !Array.isArray(state.review_context.replacement_history)) errors.push('review_context is invalid');
   if (!state.agent_state || typeof state.agent_state !== 'object') errors.push('agent_state is required');

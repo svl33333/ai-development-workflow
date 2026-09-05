@@ -53,6 +53,10 @@ function normalizeLegacyState(state) {
     prototype_review_iteration: state.prototype_review_iteration ?? 0,
     qualifying_prototype_review_iteration: state.qualifying_prototype_review_iteration ?? 0,
     prototype_model_confirmed: state.prototype_model_confirmed ?? false,
+    prototype_review_conversation_id: state.prototype_review_conversation_id ?? null,
+    prototype_required_model: state.prototype_required_model ?? null,
+    prototype_actual_model: state.prototype_actual_model ?? null,
+    prototype_model_user_confirmed: state.prototype_model_user_confirmed ?? false,
     review_context: state.review_context ?? {
       planning_conversation_id: null, active_plan_review_conversation_id: null,
       active_plan_review_project_id: null, active_plan_review_history_revision: 0,

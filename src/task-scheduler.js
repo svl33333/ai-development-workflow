@@ -15,7 +15,14 @@ export class TaskScheduler {
       ids.add(unit.unit_id); this.units.set(unit.unit_id, { ...unit, status: 'PENDING', max_attempts: unit.max_attempts ?? this.maxAttempts, attempts: 0, retry_of: null, run_id: null, generation: this.generation });
     }
     for (const unit of this.units.values()) for (const dep of unit.dependency_ids) if (!ids.has(dep)) throw new Error(`unknown dependency: ${dep}`);
-    const owners = new Map(); for (const unit of this.units.values()) for (const scope of unit.change_scope) { if (owners.has(scope) && !unit.dependency_ids.includes(owners.get(scope))) throw new Error(`overlapping change scope requires dependency: ${unit.unit_id}`); owners.set(scope, unit.unit_id); }
+    const overlaps = (left, right) => left === right || left.startsWith(`${right.replace(/[\\/]$/, '')}/`) || right.startsWith(`${left.replace(/[\\/]$/, '')}/`);
+    const prior = [];
+    for (const unit of this.units.values()) {
+      for (const scope of unit.change_scope) {
+        for (const entry of prior) if (overlaps(scope, entry.scope) && entry.unit_id !== unit.unit_id && !unit.dependency_ids.includes(entry.unit_id)) throw new Error(`overlapping change scope requires dependency: ${unit.unit_id}`);
+        prior.push({ unit_id: unit.unit_id, scope });
+      }
+    }
     this.assertAcyclic(); return this.snapshot();
   }
   assertAcyclic() { const visiting = new Set(); const visited = new Set(); const visit = (id) => { if (visiting.has(id)) throw new Error(`dependency cycle: ${id}`); if (visited.has(id)) return; visiting.add(id); for (const dep of this.units.get(id).dependency_ids) visit(dep); visiting.delete(id); visited.add(id); }; for (const id of this.units.keys()) visit(id); }
