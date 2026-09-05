@@ -103,6 +103,13 @@ export class WorkflowOrchestrator {
       if (!verified.ok) throw new Error('production issue presentation is stale');
       extra = { ...extra, artifact_digest: receipt.digest, canonical_revision: receipt.canonical_revision, issue_identity: state.issue_identity ?? extra.issue_identity };
     }
+    const requiredPresentationKinds = {
+      production_spec: ['spec', 'production_spec'],
+      production_plan: ['plan', 'production_plan'],
+      pr_publish: ['pr_review', 'pr'],
+      pr_merge: ['pr']
+    }[kind];
+    if (requiredPresentationKinds && !(await this.hasCurrentPresentation(state, requiredPresentationKinds))) throw new Error(`${kind} approval requires a current presented artifact`);
     const approval = createApproval({ kind, approved_by: 'human', work_id: state.work_id === 'unassigned' ? 'fixture-work' : state.work_id, artifact_version: 1, ...extra });
     await fs.mkdir(path.join(this.productPath, '.ai-workflow', 'approvals'), { recursive: true });
     await fs.writeFile(path.join(this.productPath, '.ai-workflow', 'approvals', `${kind}.json`), JSON.stringify(approval, null, 2));
@@ -133,7 +140,12 @@ export class WorkflowOrchestrator {
     return this.setStage('promotion_waiting_approval', 'waiting_for_human');
   }
   async promotionApproved() { await this.approve('promotion'); return this.setStage('production_grilling', 'running'); }
-  async productionGrilled() { return this.setStage('production_spec_waiting_approval', 'waiting_for_human'); }
+  async productionGrilled() {
+    const state = await this.state();
+    const artifact = await writeArtifact(this.productPath, { projectId: state.project_id, stage: 'production_spec_waiting_approval', workId: state.work_id, artifactType: 'production-spec', version: state.revision + 1 }, `# Production Specification\n\n- work_id: ${state.work_id}\n- source: approved grilling record\n`);
+    await this.store.update((current) => ({ ...current, artifacts: [...(current.artifacts ?? []), { kind: 'production_spec', path: artifact, version: current.revision + 1 }] }));
+    return this.setStage('production_spec_waiting_approval', 'waiting_for_human');
+  }
   async productionSpecApproved() { await this.approve('production_spec'); return this.setStage('production_issue_creating', 'running'); }
   async createProductionIssue() {
     const state = await this.state();

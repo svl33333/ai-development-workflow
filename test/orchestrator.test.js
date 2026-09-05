@@ -8,12 +8,19 @@ import { createFakeGitHubAdapter } from '../src/adapters/github.js';
 import { createFakeC2CAdapter } from '../src/adapters/chatgpt-c2c.js';
 import { desiredProject } from '../src/adapters/chatgpt-project.js';
 
+async function presentLatest(flow, kinds) {
+  const state = await flow.state();
+  const artifact = [...state.artifacts].reverse().find((candidate) => kinds.includes(candidate.kind));
+  assert.ok(artifact, `expected artifact kind: ${kinds.join(', ')}`);
+  return flow.presentArtifact({ artifactPath: artifact.path, artifactKind: artifact.kind, present: async () => ({ success: true, reference: `test-${artifact.kind}` }) });
+}
+
 test('fixture completes the approved prototype-to-merge vertical slice', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-e2e-')); const github = createFakeGitHubAdapter(); const flow = new WorkflowOrchestrator(root, github);
   await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE');
-  await flow.promotionApproved(); await flow.productionGrilled(); await flow.productionSpecApproved(); await flow.issueCreated();
+  await flow.promotionApproved(); await flow.productionGrilled(); await presentLatest(flow, ['production_spec']); await flow.productionSpecApproved(); await flow.issueCreated();
   for (let round = 1; round <= 3; round += 1) { await flow.planReviewed(); await flow.planImproved(); }
-  await flow.planApproved();
+  await presentLatest(flow, ['production_plan']); await flow.planApproved();
   await flow.implementationComplete(); await flow.prReviewed();
   const prReview = (await flow.state()).artifacts.find((artifact) => artifact.kind === 'pr_review');
   await flow.presentArtifact({ artifactPath: prReview.path, artifactKind: 'pr_review', present: async () => ({ success: true, reference: 'test-pr-review' }) });
@@ -31,7 +38,7 @@ test('production implementation plan requires three qualifying reviews in one de
   const flow = new WorkflowOrchestrator(root, createFakeGitHubAdapter(), null, c2c);
 
   await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE');
-  await flow.promotionApproved(); await flow.productionGrilled(); await flow.productionSpecApproved(); await flow.issueCreated();
+  await flow.promotionApproved(); await flow.productionGrilled(); await presentLatest(flow, ['production_spec']); await flow.productionSpecApproved(); await flow.issueCreated();
 
   await flow.planReviewed();
   assert.equal((await flow.state()).stage, 'production_plan_improvement');
@@ -42,6 +49,7 @@ test('production implementation plan requires three qualifying reviews in one de
   await flow.planImproved(); await flow.planReviewed();
   assert.equal((await flow.state()).stage, 'production_plan_improvement');
   await flow.planImproved();
+  await presentLatest(flow, ['production_plan']);
   assert.equal((await flow.state()).stage, 'production_plan_waiting_approval');
   assert.equal((await flow.state()).plan_review_iteration, 3);
   assert.equal((await flow.state()).qualifying_plan_review_iteration, 3);
@@ -58,7 +66,7 @@ test('new Issue path creates and binds a presented Issue artifact before plannin
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-issue-path-'));
   const flow = new WorkflowOrchestrator(root, createFakeGitHubAdapter());
   await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE');
-  await flow.promotionApproved(); await flow.productionGrilled(); await flow.productionSpecApproved();
+  await flow.promotionApproved(); await flow.productionGrilled(); await presentLatest(flow, ['production_spec']); await flow.productionSpecApproved();
   assert.equal((await flow.state()).stage, 'production_issue_creating');
   await flow.next();
   const state = await flow.state();
@@ -75,7 +83,7 @@ test('next completes three plan review and improvement rounds before it requests
   const flow = new WorkflowOrchestrator(root, createFakeGitHubAdapter());
 
   await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE');
-  await flow.promotionApproved(); await flow.productionGrilled(); await flow.productionSpecApproved(); await flow.issueCreated();
+  await flow.promotionApproved(); await flow.productionGrilled(); await presentLatest(flow, ['production_spec']); await flow.productionSpecApproved(); await flow.issueCreated();
 
   for (let step = 0; step < 6; step += 1) await flow.next();
 
@@ -99,9 +107,9 @@ test('publish and merge reject calls without bound human approvals', async () =>
 
 test('stale publish approval and missing merge approval never call GitHub', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-stale-')); const github = createFakeGitHubAdapter(); const flow = new WorkflowOrchestrator(root, github);
-  await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE'); await flow.promotionApproved(); await flow.productionGrilled(); await flow.productionSpecApproved(); await flow.issueCreated();
+  await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE'); await flow.promotionApproved(); await flow.productionGrilled(); await presentLatest(flow, ['production_spec']); await flow.productionSpecApproved(); await flow.issueCreated();
   for (let round = 1; round <= 3; round += 1) { await flow.planReviewed(); await flow.planImproved(); }
-  await flow.planApproved(); await flow.implementationComplete(); await flow.prReviewed();
+  await presentLatest(flow, ['production_plan']); await flow.planApproved(); await flow.implementationComplete(); await flow.prReviewed();
   const prReview = (await flow.state()).artifacts.find((artifact) => artifact.kind === 'pr_review');
   await flow.presentArtifact({ artifactPath: prReview.path, artifactKind: 'pr_review', present: async () => ({ success: true, reference: 'test-pr-review' }) });
   await flow.publishApproved();
@@ -196,9 +204,9 @@ test('next resumes an approved human gate from durable approval', async () => {
 
 test('next dispatches approved publish and merge gates', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-next-pr-')); const github = createFakeGitHubAdapter(); const flow = new WorkflowOrchestrator(root, github);
-  await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE'); await flow.promotionApproved(); await flow.productionGrilled(); await flow.productionSpecApproved(); await flow.issueCreated();
+  await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE'); await flow.promotionApproved(); await flow.productionGrilled(); await presentLatest(flow, ['production_spec']); await flow.productionSpecApproved(); await flow.issueCreated();
   for (let round = 1; round <= 3; round += 1) { await flow.planReviewed(); await flow.planImproved(); }
-  await flow.planApproved(); await flow.implementationComplete(); await flow.prReviewed();
+  await presentLatest(flow, ['production_plan']); await flow.planApproved(); await flow.implementationComplete(); await flow.prReviewed();
   const prReview = (await flow.state()).artifacts.find((artifact) => artifact.kind === 'pr_review');
   await flow.presentArtifact({ artifactPath: prReview.path, artifactKind: 'pr_review', present: async () => ({ success: true, reference: 'test-pr-review' }) });
   await flow.publishApproved();
@@ -213,6 +221,8 @@ test('legacy review counters and mixed review conversations cannot approve a pro
   await flow.store.setup({ project_id: 'legacy-review' });
   await flow.store.update((state) => ({ ...state, work_id: 'legacy-work', stage: 'production_plan_waiting_approval', status: 'waiting_for_human', next_action: 'codex_implement', plan_review_iteration: 3, qualifying_plan_review_iteration: 0, review_history: [] , agent_state: { ...state.agent_state, stage: 'production_plan_waiting_approval', status: 'waiting_for_human', next_action: 'codex_implement' } }));
   await assert.rejects(() => flow.planApproved(), /qualifying review rounds/);
+  await fs.writeFile(path.join(root, 'plan.md'), 'plan');
+  await flow.presentArtifact({ artifactPath: 'plan.md', artifactKind: 'plan', present: async () => ({ success: true, reference: 'test-plan' }) });
   await flow.approve('production_plan');
   const bypass = await flow.next();
   assert.equal(bypass.blocked, true);
@@ -241,7 +251,7 @@ test('unresolved blocking plan-review findings cannot reach the human approval s
     return { state: 'DONE', status: 'DONE', findings: [] };
   } });
   const flow = new WorkflowOrchestrator(root, createFakeGitHubAdapter(), null, c2c);
-  await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE'); await flow.promotionApproved(); await flow.productionGrilled(); await flow.productionSpecApproved(); await flow.issueCreated();
+  await flow.begin(); await flow.prototypeDesignApproved(); await flow.prototypeImplemented(); await flow.evaluatePrototype('PROMOTE_CANDIDATE'); await flow.promotionApproved(); await flow.productionGrilled(); await presentLatest(flow, ['production_spec']); await flow.productionSpecApproved(); await flow.issueCreated();
   await flow.planReviewed(); await flow.planImproved();
   assert.equal((await flow.state()).stage, 'production_plan_review');
   assert.equal((await flow.state()).review_history[0].unresolved_blocking_findings, 1);
