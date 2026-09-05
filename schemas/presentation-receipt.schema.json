@@ -1,0 +1,1 @@
+{"type":"object","required":["presentation_id","artifact_path","artifact_kind","canonical_revision","digest","presented_at","presentation_method","work_id"],"properties":{"work_id":{"type":"string"},"issue_identity":{"type":["object","null"]},"approval_status":{"type":"string"}}}

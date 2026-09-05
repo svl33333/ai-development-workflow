@@ -7,10 +7,16 @@ export class ConversationRunner {
   }
 
   async run({ taskId, iteration, messageId, project, message, conversationId = null, workspace = null, role = 'unspecified', stage = 'unspecified' }) {
+    const currentState = await this.stateStore.read();
+    const issueKey = currentState.state.issue_identity?.node_id ?? (currentState.state.issue_identity?.repository && currentState.state.issue_identity?.number ? `${currentState.state.issue_identity.repository}#${currentState.state.issue_identity.number}` : currentState.state.work_id);
+    const registryKey = `${issueKey}:${stage}:${role}`;
+    const binding = currentState.state.conversation_registry?.[registryKey];
+    if (binding && conversationId && binding.conversation_id !== conversationId) throw Object.assign(new Error('conversation binding mismatch; refusing to resume a different Issue/stage/role conversation'), { code: 4 });
+    if (binding && binding.workspace && workspace && binding.workspace !== workspace) throw Object.assign(new Error('conversation workspace binding mismatch'), { code: 4 });
+    conversationId ??= binding?.conversation_id ?? null;
     let conversation = conversationId
       ? await this.adapter.resumeConversation({ conversationId, project })
       : await this.adapter.startConversation({ project });
-    const currentState = await this.stateStore.read();
     const sent = currentState.state.conversation?.sent_messages ?? [];
     const existingDelivery = sent.find((item) => item.task_id === taskId && item.iteration === iteration && item.message_id === messageId);
     if (existingDelivery?.delivery_state === 'confirmed') {
@@ -47,8 +53,11 @@ export class ConversationRunner {
       const sentMessages = state.conversation?.sent_messages ?? [];
       const previous = sentMessages.find((entry) => entry.task_id === taskId && entry.iteration === iteration && entry.message_id === messageId);
       const entry = { task_id: taskId, iteration, message_id: messageId, conversation_id: conversationId, delivery_state: deliveryState, remote_message_id: remoteMessageId ?? previous?.remote_message_id ?? null };
+      const issueKey = state.issue_identity?.node_id ?? (state.issue_identity?.repository && state.issue_identity?.number ? `${state.issue_identity.repository}#${state.issue_identity.number}` : state.work_id);
+      const registryKey = `${issueKey}:${stage}:${role}`;
       return {
         ...state,
+        conversation_registry: { ...(state.conversation_registry ?? {}), [registryKey]: { project_id: project?.id ?? project?.name ?? null, project_url: project?.url ?? null, conversation_id: conversationId, conversation_url: project?.conversation_url ?? null, workspace: workspace ?? state.project_id, repository: project?.repository ?? null, work_id: state.work_id, stage, role, resumable: true, updated_at: new Date().toISOString() } },
         conversation: { ...(state.conversation ?? {}), task_id: taskId, iteration, project_id: project?.id ?? project?.name ?? null, project_url: project?.url ?? null, workspace: workspace ?? state.project_id, role, stage, conversation_id: conversationId, conversation_url: project?.conversation_url ?? null, last_message_id: messageId, next_operation: deliveryState === 'confirmed' ? 'wait_for_response' : 'reconcile_delivery', failure_reason: deliveryState === 'ambiguous' ? 'message delivery outcome is unknown' : null, state: deliveryState === 'confirmed' ? 'EXECUTING' : deliveryState.toUpperCase(), sent_messages: [...sentMessages.filter((item) => item !== previous), entry] }
       };
     });

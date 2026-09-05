@@ -1,14 +1,14 @@
 export const STAGES = [
   'prototype_intake', 'prototype_design', 'prototype_implementation', 'prototype_evaluation',
   'promotion_waiting_approval', 'production_grilling', 'production_spec_waiting_approval',
-  'production_issue_ready', 'production_planning', 'production_plan_review', 'production_plan_improvement',
+  'production_issue_creating', 'production_issue_waiting_review', 'production_issue_ready', 'production_planning', 'production_plan_review', 'production_plan_improvement',
   'production_plan_waiting_approval', 'production_implementation', 'production_pr_draft',
   'production_pr_review', 'production_fix', 'production_publish_waiting_approval',
   'production_published', 'production_merge_waiting_approval', 'completed', 'stopped', 'blocked'
 ];
 
 export const APPROVAL_KINDS = [
-  'prototype_implementation', 'promotion', 'production_spec', 'production_plan',
+  'prototype_implementation', 'promotion', 'production_spec', 'production_issue_review', 'production_plan',
   'pr_publish', 'pr_merge', 'destructive_operation', 'spec_change', 'update',
   'review_conversation_replacement'
 ];
@@ -36,6 +36,7 @@ export function initialState(projectId, workflowVersion = 1) {
     agent: 'codex', chatgpt_project: 'prototype', artifacts: [], base_revision: null,
     current_revision: null, next_action: 'create_concept_brief', stop_reason: null, revision: 1,
     plan_review_iteration: 0, qualifying_plan_review_iteration: 0, review_history: [],
+    issue_identity: null, connection_binding: null, conversation_registry: {}, presentation_receipts: [],
     review_context: {
       planning_conversation_id: null, active_plan_review_conversation_id: null,
       active_plan_review_project_id: null, active_plan_review_history_revision: 0,
@@ -71,5 +72,7 @@ export function validateState(state) {
       if (!entry.task_id || !Number.isInteger(entry.iteration) || !entry.message_id || !entry.conversation_id || !['prepared', 'sending', 'confirmed', 'ambiguous'].includes(entry.delivery_state)) errors.push('conversation.sent_messages entry is invalid');
     }
   }
+  if (state.presentation_receipts !== undefined && !Array.isArray(state.presentation_receipts)) errors.push('presentation_receipts is invalid');
+  if (state.conversation_registry !== undefined && (!state.conversation_registry || typeof state.conversation_registry !== 'object' || Array.isArray(state.conversation_registry))) errors.push('conversation_registry is invalid');
   return errors;
 }

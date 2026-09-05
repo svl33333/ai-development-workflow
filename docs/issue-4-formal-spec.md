@@ -1,4 +1,5 @@
 # Issue #4 正式仕様書
+
 - Status: adopted
 - Owner: svl33333
 - Date: 2026-09-05

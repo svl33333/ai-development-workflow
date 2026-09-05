@@ -39,6 +39,11 @@ export function parseFrontMatter(text) {
 function normalizeLegacyState(state) {
   return {
     ...state,
+    schema_version: state.schema_version ?? 1,
+    issue_identity: state.issue_identity ?? null,
+    connection_binding: state.connection_binding ?? null,
+    conversation_registry: state.conversation_registry ?? {},
+    presentation_receipts: state.presentation_receipts ?? [],
     plan_review_iteration: state.plan_review_iteration ?? 0,
     qualifying_plan_review_iteration: state.qualifying_plan_review_iteration ?? 0,
     review_history: state.review_history ?? [],
@@ -52,14 +57,14 @@ function normalizeLegacyState(state) {
 }
 
 function yamlValue(value, indent = '') {
-  if (Array.isArray(value)) return `${indent}${JSON.stringify(value)}`;
-  if (value && typeof value === 'object') return Object.entries(value).map(([k, v]) => `${indent}${k}: ${v && typeof v === 'object' && !Array.isArray(v) ? `\n${yamlValue(v, `${indent}  `)}` : v === null ? 'null' : Array.isArray(v) ? JSON.stringify(v) : String(v)}`).join('\n');
+  if (value && typeof value === 'object') return `${indent}${JSON.stringify(value)}`;
   return `${indent}${value === null ? 'null' : String(value)}`;
 }
 
 export function serializeState(state, body = '# AI workflow state\n') {
   const { agent_state, ...top } = state;
-  return `---\n${yamlValue(top)}\nagent_state:\n${yamlValue(agent_state, '  ')}\n---\n${body.replace(/^---[\s\S]*?---\n/, '')}`;
+  const lines = Object.entries(top).map(([key, value]) => `${key}: ${yamlValue(value).trim()}`).join('\n');
+  return `---\n${lines}\nagent_state: ${JSON.stringify(agent_state)}\n---\n${body.replace(/^---[\s\S]*?---\n/, '')}`;
 }
 
 export class StateStore {

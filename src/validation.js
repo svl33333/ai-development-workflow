@@ -5,6 +5,7 @@ import { STAGES } from './model.js';
 import { nextStage } from './workflow.js';
 
 function matchesType(value, type) {
+  if (Array.isArray(type)) return type.some((candidate) => matchesType(value, candidate));
   if (type === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value);
   if (type === 'array') return Array.isArray(value);
   if (type === 'string') return typeof value === 'string';
@@ -51,6 +52,11 @@ export async function validateProduct(productPath) {
       if (!artifact.path) errors.push({ id: 'ARTIFACT_METADATA_INVALID', message: 'artifact path is required' });
       else if (artifact.path.includes('..') || path.isAbsolute(artifact.path)) errors.push({ id: 'ARTIFACT_LINK_INVALID', message: `unsafe artifact path: ${artifact.path}` });
       else { try { await fs.access(path.join(productPath, artifact.path)); } catch { errors.push({ id: 'ARTIFACT_MISSING', message: artifact.path }); } }
+    }
+    for (const receipt of result.state.presentation_receipts ?? []) {
+      try { errors.push(...await validateSchema(productPath, 'presentation-receipt.schema.json', receipt, `presentation.${receipt.presentation_id ?? 'unknown'}`)); }
+      catch (error) { errors.push({ id: 'SCHEMA_INVALID', message: error.message }); }
+      if (receipt.artifact_path && (path.isAbsolute(receipt.artifact_path) || receipt.artifact_path.includes('..'))) errors.push({ id: 'PRESENTATION_PATH_INVALID', message: receipt.artifact_path });
     }
     const requiresGitEvidence = ['production_pr_draft', 'production_pr_review', 'production_fix', 'production_publish_waiting_approval', 'production_published', 'production_merge_waiting_approval', 'completed'].includes(state.stage);
     const isFixture = path.resolve(productPath).includes(`${path.sep}fixtures${path.sep}`);
