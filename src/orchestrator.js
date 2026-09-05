@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { StateStore } from './state-store.js';
 import { deriveQualifyingPlanReviewIteration } from './model.js';
@@ -26,16 +27,17 @@ const actions = {
 };
 
 export class WorkflowOrchestrator {
-  constructor(productPath, github = null, evidenceProvider = null, c2c = null, projectProvider = null, projectResolver = null, expectedRepository = null, executionEngine = null, issueGateway = null) { this.productPath = productPath; this.store = new StateStore(productPath); this.syntheticEvidence = path.resolve(productPath).includes(`${path.sep}fixtures${path.sep}`) || github?.synthetic === true; this.github = github ?? (this.syntheticEvidence ? createFakeGitHubAdapter() : null); this.executionEngine = executionEngine; this.issueGateway = issueGateway; this.c2c = c2c ?? (this.syntheticEvidence ? createFakeC2CAdapter() : null); this.expectedRepository = expectedRepository ?? 'fixture/repository'; this.projectProvider = projectProvider ?? (async (kind) => { if (!this.syntheticEvidence) throw Object.assign(new Error('live ChatGPT Project provider is required'), { code: 4 }); return desiredProject(kind); }); this.projectResolver = projectResolver ?? (async (kind, state) => { const project = await this.projectProvider(kind); if (!verifyProject(project, kind)) return { status: 'binding_mismatch', project }; return { status: 'resolved', project: { ...project, workspace: state.project_id, repository: this.expectedRepository } }; }); this.evidenceProvider = evidenceProvider ?? (async (state) => { if (!this.syntheticEvidence) throw new Error('live evidence provider is required outside fixtures'); return { pr_number: state.pr_number ?? 1, target_revision: state.current_revision ?? state.base_revision ?? 'workspace-head', test_run_id: state.test_run_id ?? 'phase1-local-001', test_artifact: state.test_artifact ?? 'work/runs/phase1-test-run.md', review_artifact: state.review_artifact ?? 'work/local-pr-draft.md', review_iteration: state.review_iteration ?? 0, unresolved_blocking_findings: state.unresolved_blocking_findings ?? 0 }; }); }
+  constructor(productPath, github = null, evidenceProvider = null, c2c = null, projectProvider = null, projectResolver = null, expectedRepository = null, executionEngine = null, issueGateway = null) { this.productPath = productPath; this.store = new StateStore(productPath); this.generation = null; this.syntheticEvidence = path.resolve(productPath).includes(`${path.sep}fixtures${path.sep}`) || github?.synthetic === true; this.github = github ?? (this.syntheticEvidence ? createFakeGitHubAdapter() : null); this.executionEngine = executionEngine; this.issueGateway = issueGateway; this.c2c = c2c ?? (this.syntheticEvidence ? createFakeC2CAdapter() : null); this.expectedRepository = expectedRepository ?? 'fixture/repository'; this.projectProvider = projectProvider ?? (async (kind) => { if (!this.syntheticEvidence) throw Object.assign(new Error('live ChatGPT Project provider is required'), { code: 4 }); return desiredProject(kind); }); this.projectResolver = projectResolver ?? (async (kind, state) => { const project = await this.projectProvider(kind); if (!verifyProject(project, kind)) return { status: 'binding_mismatch', project }; return { status: 'resolved', project: { ...project, workspace: state.project_id, repository: this.expectedRepository } }; }); this.evidenceProvider = evidenceProvider ?? (async (state) => { if (!this.syntheticEvidence) throw new Error('live evidence provider is required outside fixtures'); return { pr_number: state.pr_number ?? 1, target_revision: state.current_revision ?? state.base_revision ?? 'workspace-head', test_run_id: state.test_run_id ?? 'phase1-local-001', test_artifact: state.test_artifact ?? 'work/runs/phase1-test-run.md', review_artifact: state.review_artifact ?? 'work/local-pr-draft.md', review_iteration: state.review_iteration ?? 0, unresolved_blocking_findings: state.unresolved_blocking_findings ?? 0 }; }); }
   async state() { return (await this.store.read()).state; }
+  async assertActiveGeneration(state = null) { const current = state ?? await this.state(); if (this.generation !== null && current.orchestrator_generation !== this.generation) throw Object.assign(new Error('orchestrator generation is superseded'), { code: 3 }); this.generation ??= current.orchestrator_generation; return current; }
   async setStage(stage, status = 'ready', nextAction = actions[stage]) {
-    const action = nextAction ?? 'none'; const current = await this.state();
+    const action = nextAction ?? 'none'; const current = await this.assertActiveGeneration();
     const artifact = await writeArtifact(this.productPath, { projectId: current.project_id, stage, workId: current.work_id, artifactType: 'stage-log', version: current.revision + 1 }, `# Stage transition\n\n- from: ${current.stage}\n- to: ${stage}\n- status: ${status}\n- next_action: ${action}`);
     return this.store.update((state) => ({ ...state, stage, status, next_action: action, artifacts: [...(state.artifacts ?? []), { kind: 'stage-log', path: artifact, version: state.revision + 1 }], agent_state: { ...state.agent_state, stage, status, next_action: action, waiting_reason: status.includes('waiting') ? action : null, error: null } }));
   }
   async chatgptStep(operation, stage, { conversationId = null } = {}) {
     if (!this.c2c) throw Object.assign(new Error('live ChatGPT C2C adapter is required'), { code: 4 });
-    const state = await this.state(); const kind = operation.includes('prototype') ? 'prototype' : 'production';
+    const state = await this.assertActiveGeneration(); const kind = operation.includes('prototype') ? 'prototype' : 'production';
     const resolved = await this.projectResolver(kind, state); if (resolved.status !== 'resolved' || !verifyProjectBinding(resolved.project, { workspace: state.project_id, repository: this.expectedRepository })) throw Object.assign(new Error('ChatGPT Project resolution or binding verification failed'), { code: 4 });
     const actual = resolved.project;
     const request = sanitizeRequest(createRequest({ taskId: `workflow-${operation}`, iteration: state.revision, operation, workspace: state.project_id, workId: state.work_id, stage, inputs: state.artifacts.map((a) => a.path), readScope: ['state', 'artifacts'], expected: 'structured response' }));
@@ -107,7 +109,8 @@ export class WorkflowOrchestrator {
       if (!verified.ok) throw new Error('production issue presentation is stale');
       extra = { ...extra, artifact_digest: receipt.digest, canonical_revision: receipt.canonical_revision, issue_identity: state.issue_identity ?? extra.issue_identity };
     }
-    const requiredPresentationKinds = {
+    const requiredPresentationKinds = (this.syntheticEvidence && kind === 'prototype_implementation') ? null : {
+      prototype_implementation: ['prototype_design'],
       production_spec: ['spec', 'production_spec'],
       production_plan: ['plan', 'production_plan'],
       pr_publish: ['pr_review', 'pr'],
@@ -144,8 +147,8 @@ export class WorkflowOrchestrator {
     await this.store.update((current) => ({ ...current, presentation_receipts: [...(current.presentation_receipts ?? []).map((item) => item.artifact_path === persistedReceipt.artifact_path ? { ...item, approval_status: 'stale' } : item), persistedReceipt] }));
     return persistedReceipt;
   }
-  async begin() { await this.store.setup({ project_id: 'sample-product' }); await this.store.update((s) => ({ ...s, work_id: 'fixture-work' })); await ensureOrchestrator(this.store); await this.chatgptStep('prototype_design', 'prototype_design'); return this.setStage('prototype_design', 'waiting_for_chatgpt'); }
-  async prototypeDesignApproved() { await this.approve('prototype_implementation'); return this.setStage('prototype_implementation', 'running'); }
+  async begin() { await this.store.setup({ project_id: 'sample-product' }); await this.store.update((s) => ({ ...s, work_id: 'fixture-work' })); const lifecycle = await ensureOrchestrator(this.store); this.generation = lifecycle.generation; await this.chatgptStep('prototype_design', 'prototype_design'); return this.setStage('prototype_design', 'waiting_for_chatgpt'); }
+  async prototypeDesignApproved() { if (!this.syntheticEvidence && !(await this.hasCurrentPresentation(await this.state(), ['prototype_design']))) throw new Error('prototype design must be presented before approval'); await this.approve('prototype_implementation', this.syntheticEvidence ? {} : { require_presentation_binding: true }); return this.setStage('prototype_implementation', 'running'); }
   async prototypeImplemented() { const state = await this.state(); if (this.executionEngine && state.execution_plan?.stage === 'prototype') { const execution = await this.executionEngine.run(state.execution_plan, { baseRevision: state.current_revision ?? state.base_revision ?? 'HEAD', prompt: 'Execute the approved prototype units' }); await this.store.update((current) => ({ ...current, execution_result: execution, current_revision: execution.units.at(-1)?.result?.commit ?? current.current_revision })); } await this.chatgptStep('prototype_evaluation', 'prototype_evaluation'); return this.setStage('prototype_evaluation', 'waiting_for_chatgpt'); }
   async evaluatePrototype(decision) {
     if (!['ITERATE', 'PROMOTE_CANDIDATE', 'STOP'].includes(decision)) throw new Error(`invalid prototype decision: ${decision}`);
@@ -221,7 +224,12 @@ export class WorkflowOrchestrator {
     const state = await this.state();
     if (state.qualifying_plan_review_iteration < 3) throw new Error('production plan requires three qualifying review rounds before approval');
     if (state.stage !== 'production_plan_waiting_approval') throw new Error('production plan is not ready for approval');
-    await this.approve('production_plan'); return this.setStage('production_implementation', 'running');
+    const artifact = [...(state.artifacts ?? [])].reverse().find((item) => item.kind === 'plan' || item.kind === 'production_plan');
+    let executionPlan = null; let manifestDigest = null;
+    if (artifact) { try { executionPlan = JSON.parse(await fs.readFile(path.resolve(this.productPath, artifact.path), 'utf8')); const unsigned = { ...executionPlan }; delete unsigned.approval_digest; manifestDigest = crypto.createHash('sha256').update(JSON.stringify(unsigned)).digest('hex'); executionPlan = { ...executionPlan, approval_digest: manifestDigest }; } catch { /* legacy markdown plans remain supported in fixtures */ } }
+    await this.approve('production_plan', manifestDigest ? { manifest_digest: manifestDigest } : {});
+    if (executionPlan) await this.store.update((current) => ({ ...current, execution_plan: executionPlan, execution_plan_digest: manifestDigest }));
+    return this.setStage('production_implementation', 'running');
   }
   async replacePlanReviewConversation() {
     const state = await this.state(); const context = state.review_context;
@@ -235,7 +243,7 @@ export class WorkflowOrchestrator {
     await fs.unlink(path.join(this.productPath, '.ai-workflow', 'approvals', 'review_conversation_replacement.json'));
     return this.store.update((current) => ({ ...current, qualifying_plan_review_iteration: 0, review_context: { ...current.review_context, active_plan_review_conversation_id: replacement.conversationId, active_plan_review_project_id: project.id ?? project.name, active_plan_review_history_revision: current.revision + 1, active_plan_review_non_resumable_reason: null, replacement_history: [...current.review_context.replacement_history, { old_conversation_id: context.active_plan_review_conversation_id, new_conversation_id: replacement.conversationId, reason: context.active_plan_review_non_resumable_reason }] } }));
   }
-  async implementationComplete() { const state = await this.state(); const planArtifact = [...(state.artifacts ?? [])].reverse().find((artifact) => artifact.kind === 'plan' || artifact.kind === 'production_plan'); if (planArtifact && this.executionEngine) { const plan = JSON.parse(await fs.readFile(path.resolve(this.productPath, planArtifact.path), 'utf8')); const execution = await this.executionEngine.run(plan, { baseRevision: state.current_revision ?? state.base_revision ?? 'HEAD' }); await this.store.update((current) => ({ ...current, execution_result: execution, current_revision: execution.units.at(-1)?.result?.commit ?? current.current_revision })); } else if (planArtifact && !this.syntheticEvidence) throw new Error('approved execution plan requires a configured execution engine'); return this.setStage('production_pr_draft', 'running'); }
+  async implementationComplete() { const state = await this.assertActiveGeneration(); const planArtifact = [...(state.artifacts ?? [])].reverse().find((artifact) => artifact.kind === 'plan' || artifact.kind === 'production_plan'); let plan = state.execution_plan ?? null; if (!plan && planArtifact) { try { plan = JSON.parse(await fs.readFile(path.resolve(this.productPath, planArtifact.path), 'utf8')); } catch { plan = null; } } if (plan && this.executionEngine) { const approval = await this.loadApproval('production_plan'); const execution = await this.executionEngine.run(plan, { baseRevision: state.current_revision ?? state.base_revision ?? 'HEAD', approvedDigest: approval.manifest_digest ?? state.execution_plan_digest }); await this.store.update((current) => ({ ...current, execution_result: execution, current_revision: execution.units.at(-1)?.result?.commit ?? current.current_revision })); } else if (plan && !this.syntheticEvidence) throw new Error('approved execution plan requires a configured execution engine'); return this.setStage('production_pr_draft', 'running'); }
   async prReviewed() {
     const review = await this.chatgptStep('pr_review', 'production_pr_review');
     const blocking = (review.findings ?? []).filter((finding) => ['CRITICAL', 'HIGH', 'IMPORTANT'].includes(String(finding.severity ?? '').toUpperCase()));

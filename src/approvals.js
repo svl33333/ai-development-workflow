@@ -5,6 +5,7 @@ export function createApproval(input) {
   if (!input.approved_by || !input.work_id) throw new Error('approved_by and work_id are required');
   if (input.kind === 'destructive_operation' && !input.operation_id) throw new Error('operation_id is required');
   if (['prototype_implementation', 'production_spec'].includes(input.kind) && !input.artifact_version) throw new Error('artifact_version is required');
+  if (input.require_presentation_binding && (!input.presentation_id || !input.artifact_digest || !input.canonical_revision)) throw new Error(`${input.kind} requires presentation binding`);
   if (input.kind === 'production_issue_review' && (!input.presentation_id || !input.artifact_digest || !input.canonical_revision || !input.issue_identity)) throw new Error('production_issue_review requires presentation binding');
   if (['production_spec', 'production_plan', 'pr_publish', 'pr_merge'].includes(input.kind) && (!input.presentation_id || !input.artifact_digest || !input.canonical_revision)) throw new Error(`${input.kind} requires presentation binding`);
   if (input.kind === 'update' && (!input.candidate_version || !input.project_id || !input.managed_workflow_digest)) throw new Error('update requires candidate_version, project_id, and managed_workflow_digest');

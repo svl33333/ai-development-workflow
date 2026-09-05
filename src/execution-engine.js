@@ -6,9 +6,9 @@ import { WorktreeManager } from './worktree-manager.js';
 export function createExecutionEngine({ root, childAdapter, gitAdapter, integrate, test, generation = 1 } = {}) {
   if (!root || !childAdapter || !gitAdapter) throw new Error('execution engine requires a child adapter and Git worktree adapter');
   return {
-    async run(plan, { baseRevision, prompt = 'Execute the approved unit plan' } = {}) {
+    async run(plan, { baseRevision, prompt = 'Execute the approved unit plan', approvedDigest = null } = {}) {
       const scheduler = new TaskScheduler({ generation });
-      scheduler.load(plan, { approvedDigest: plan.approval_digest });
+      scheduler.load(plan, { approvedDigest: approvedDigest ?? plan.approval_digest });
       const runner = new ChildTaskRunner({ root, adapter: childAdapter, worktreeManager: new WorktreeManager(root, { git: gitAdapter }), generation });
       const integration = new IntegrationManager({ generation, integrate, test });
       while (scheduler.ready().length) {
