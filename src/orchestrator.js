@@ -5,6 +5,7 @@ import { deriveQualifyingPlanReviewIteration } from './model.js';
 import { createApproval } from './approvals.js';
 import { createFakeGitHubAdapter } from './adapters/github.js';
 import { writeArtifact } from './artifacts.js';
+import { createPresentationReceipt, verifyPresentationReceipt } from './artifact-presenter.js';
 import { createRequest, sanitizeRequest, parseResponse, createFakeC2CAdapter } from './adapters/chatgpt-c2c.js';
 import { desiredProject, verifyProject, verifyProjectBinding } from './adapters/chatgpt-project.js';
 import { nextStage } from './workflow.js';
@@ -14,7 +15,7 @@ const actions = {
   prototype_intake: 'chatgpt_prototype_design', prototype_design: 'human_approve_prototype_implementation',
   prototype_implementation: 'chatgpt_prototype_evaluation', prototype_evaluation: 'human_decide_prototype_evaluation',
   promotion_waiting_approval: 'human_approve_promotion', production_grilling: 'human_approve_production_spec',
-  production_spec_waiting_approval: 'create_production_issue', production_issue_ready: 'chatgpt_production_plan',
+  production_spec_waiting_approval: 'create_production_issue', production_issue_creating: 'create_production_issue', production_issue_waiting_review: 'human_review_issue', production_issue_ready: 'chatgpt_production_plan',
   production_planning: 'chatgpt_independent_plan_review', production_plan_review: 'chatgpt_independent_plan_review',
   production_plan_improvement: 'chatgpt_refine_production_plan',
   production_plan_waiting_approval: 'codex_implement', production_implementation: 'create_local_pr_draft',
@@ -47,18 +48,22 @@ export class WorkflowOrchestrator {
   }
   async next() {
     const current = await this.state(); const target = nextStage(current.stage); if (!target) return { stage: current.stage, next_stage: null, mutation: false, stopped: true };
-    const gateKinds = { prototype_design: 'prototype_implementation', promotion_waiting_approval: 'promotion', production_spec_waiting_approval: 'production_spec', production_plan_waiting_approval: 'production_plan', production_pr_review: 'pr_publish', production_publish_waiting_approval: 'pr_publish', production_published: 'pr_merge', production_merge_waiting_approval: 'pr_merge' };
+    const gateKinds = { prototype_design: 'prototype_implementation', promotion_waiting_approval: 'promotion', production_spec_waiting_approval: 'production_spec', production_issue_waiting_review: 'production_issue_review', production_plan_waiting_approval: 'production_plan', production_pr_review: 'pr_publish', production_publish_waiting_approval: 'pr_publish', production_published: 'pr_merge', production_merge_waiting_approval: 'pr_merge' };
     const gateKind = gateKinds[current.stage];
     if (gateKind) {
       const before = current.stage;
       if (current.stage === 'production_plan_waiting_approval' && (current.qualifying_plan_review_iteration < 3 || current.review_history.some((entry) => entry.unresolved_blocking_findings > 0))) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true };
       }
+      if (current.stage === 'production_issue_waiting_review' && !(current.presentation_receipts ?? []).some((receipt) => receipt.artifact_kind === 'issue' && receipt.approval_status !== 'stale')) {
+        return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true, reason: 'issue artifact must be presented before approval' };
+      }
       try { const approval = await this.loadApproval(gateKind); if (approval.valid !== true || approval.work_id !== current.work_id) throw new Error('invalid approval'); }
       catch { return { stage: current.stage, next_stage: target, mutation: false, requires_approval: true }; }
       if (current.stage === 'prototype_design') await this.setStage('prototype_implementation', 'running');
       else if (current.stage === 'promotion_waiting_approval') await this.setStage('production_grilling', 'running');
-      else if (current.stage === 'production_spec_waiting_approval') await this.setStage('production_issue_ready', 'running');
+      else if (current.stage === 'production_spec_waiting_approval') await this.setStage('production_issue_creating', 'running');
+      else if (current.stage === 'production_issue_waiting_review') await this.setStage('production_issue_ready', 'running');
       else if (current.stage === 'production_plan_waiting_approval') await this.setStage('production_implementation', 'running');
       else if (current.stage === 'production_pr_review') await this.setStage('production_publish_waiting_approval', 'ready');
       else if (current.stage === 'production_publish_waiting_approval') await this.publish();
@@ -70,6 +75,7 @@ export class WorkflowOrchestrator {
     const before = current.stage;
     if (current.stage === 'prototype_intake') { await this.chatgptStep('prototype_design', 'prototype_design'); await this.setStage('prototype_design', 'waiting_for_chatgpt'); }
     else if (current.stage === 'prototype_implementation') await this.prototypeImplemented();
+    else if (current.stage === 'production_issue_creating') await this.setStage('production_issue_waiting_review', 'waiting_for_human');
     else if (current.stage === 'production_issue_ready') await this.issueCreated();
     else if (['production_planning', 'production_plan_review'].includes(current.stage)) await this.planReviewed();
     else if (current.stage === 'production_plan_improvement') await this.planImproved();
@@ -79,10 +85,25 @@ export class WorkflowOrchestrator {
     return { stage: before, next_stage: (await this.state()).stage, mutation: true, requires_approval: false };
   }
   async approve(kind, extra = {}) {
-    const state = await this.state(); const approval = createApproval({ kind, approved_by: 'human', work_id: state.work_id === 'unassigned' ? 'fixture-work' : state.work_id, artifact_version: 1, ...extra });
+    const state = await this.state();
+    if (kind === 'production_issue_review') {
+      const receipt = (state.presentation_receipts ?? []).find((item) => item.presentation_id === extra.presentation_id && item.artifact_kind === 'issue');
+      if (!receipt) throw new Error('production issue approval requires a current issue presentation receipt');
+      const verified = await verifyPresentationReceipt(this.productPath, receipt, { canonicalRevision: extra.canonical_revision ?? receipt.canonical_revision });
+      if (!verified.ok) throw new Error('production issue presentation is stale');
+      extra = { ...extra, artifact_digest: receipt.digest, canonical_revision: receipt.canonical_revision, issue_identity: state.issue_identity ?? extra.issue_identity };
+    }
+    const approval = createApproval({ kind, approved_by: 'human', work_id: state.work_id === 'unassigned' ? 'fixture-work' : state.work_id, artifact_version: 1, ...extra });
     await fs.mkdir(path.join(this.productPath, '.ai-workflow', 'approvals'), { recursive: true });
     await fs.writeFile(path.join(this.productPath, '.ai-workflow', 'approvals', `${kind}.json`), JSON.stringify(approval, null, 2));
     return approval;
+  }
+  async presentArtifact({ artifactPath, artifactKind, canonicalRevision = null, present }) {
+    const state = await this.state();
+    const receipt = await createPresentationReceipt(this.productPath, { path: artifactPath, kind: artifactKind }, { canonicalRevision, present });
+    const persistedReceipt = { ...receipt, approval_status: 'pending' };
+    await this.store.update((current) => ({ ...current, presentation_receipts: [...(current.presentation_receipts ?? []), persistedReceipt] }));
+    return persistedReceipt;
   }
   async begin() { await this.store.setup({ project_id: 'sample-product' }); await this.store.update((s) => ({ ...s, work_id: 'fixture-work' })); await this.chatgptStep('prototype_design', 'prototype_design'); return this.setStage('prototype_design', 'waiting_for_chatgpt'); }
   async prototypeDesignApproved() { await this.approve('prototype_implementation'); return this.setStage('prototype_implementation', 'running'); }

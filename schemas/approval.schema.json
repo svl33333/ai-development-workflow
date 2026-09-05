@@ -1,1 +1,1 @@
-{"type":"object","required":["kind","approved_by","work_id","valid"]}
+{"type":"object","required":["kind","approved_by","work_id","valid"],"properties":{"presentation_id":{"type":"string"},"artifact_digest":{"type":"string"},"canonical_revision":{"type":"string"},"issue_identity":{"type":"object"}}}

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { StateStore } from './state-store.js';
 import { validateProduct } from './validation.js';
@@ -9,6 +10,15 @@ import { onboardProduct } from './onboarding.js';
 function option(args, name, fallback = undefined) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : fallback; }
 function product(args) { const p = option(args, '--product'); if (!p) { const e = new Error('--product is required'); e.code = 2; throw e; } return path.resolve(p); }
 async function masterManifest(root) { const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')); const workflow = JSON.parse(await fs.readFile(path.join(root, 'workflow', 'workflow.json'), 'utf8')); return { workflow_version: workflow.version, schema_version: 1, adapter_version: 1, package_version: pkg.version }; }
+async function reviewArtifacts(root, state) {
+  const result = [];
+  for (const artifact of state.artifacts ?? []) {
+    const absolutePath = path.resolve(root, artifact.path);
+    try { const digest = crypto.createHash('sha256').update(await fs.readFile(absolutePath)).digest('hex'); result.push({ ...artifact, absolute_path: absolutePath, digest, presentation_status: (state.presentation_receipts ?? []).some((receipt) => receipt.artifact_path === artifact.path && receipt.digest === digest) ? 'presented' : 'not_presented' }); }
+    catch { result.push({ ...artifact, absolute_path: absolutePath, presentation_status: 'unavailable' }); }
+  }
+  return result;
+}
 
 export async function run(args) {
   const command = args[0];
@@ -16,7 +26,7 @@ export async function run(args) {
   const root = product(args); const store = new StateStore(root);
   if (command === 'setup') { await store.setup({ project_id: option(args, '--project-id', path.basename(root)), workflow_version: 1, schema_version: 1, adapter_version: 1 }); console.log(`setup complete: ${root}`); return 0; }
   if (command === 'onboard') { const result = await onboardProduct({ productPath: root, masterPath: option(args, '--master', process.cwd()), projectId: option(args, '--project-id'), baseName: option(args, '--base-name'), start: option(args, '--start', 'both') }); console.log(JSON.stringify(result, null, 2)); return result.validation.ok ? 0 : 1; }
-  if (command === 'status') { const r = await store.read(); console.log(args.includes('--json') ? JSON.stringify(r.state, null, 2) : `${r.state.stage} / ${r.state.status}\nnext: ${r.state.next_action}`); return 0; }
+  if (command === 'status') { const r = await store.read(); const output = { ...r.state, review_artifacts: await reviewArtifacts(root, r.state) }; console.log(args.includes('--json') ? JSON.stringify(output, null, 2) : `${r.state.stage} / ${r.state.status}\nnext: ${r.state.next_action}\nreview artifacts: ${output.review_artifacts.length}`); return 0; }
   if (command === 'validate') { const r = await validateProduct(root); console.log(JSON.stringify({ ok: r.ok, stage: r.state?.stage ?? null, errors: r.errors }, null, 2)); return r.ok ? 0 : 1; }
   if (command === 'update') {
     const mode = args.includes('--apply') ? 'apply' : 'check';
