@@ -1,0 +1,57 @@
+{
+  "workflow_version": 1,
+  "project_id": "ai-development-workflow",
+  "product_path": "C:\\Projects\\AI_Development_Workflow",
+  "status": "READY",
+  "requested_projects": [
+    "prototype",
+    "production"
+  ],
+  "chatgpt_projects": {
+    "prototype": {
+      "name": "AI Development Workflow Prototype--C47720F4",
+      "id": "g-p-6a9a46c8f3c8191a62b1c559672e742"
+    },
+    "production": {
+      "name": "AI Development Workflow Production--C47720F4",
+      "id": "g-p-6a9ba479a108819195290c2caf9c3ee8"
+    }
+  },
+  "project_binding": {
+    "workspace": "C:\\Projects\\AI_Development_Workflow",
+    "repository": "svl33333/ai-development-workflow",
+    "verification": "human_confirmed_and_exact_name_resolved",
+    "confirmed_at": "2026-09-05T04:50:00+09:00"
+  },
+  "next_action": "create_concept_brief",
+  "human_setup_confirmed": true,
+  "managed_master": "C:\\Users\\yuyab\\Documents\\ChatGPT\\AI Development Workflow",
+  "added_files": [
+    ".agents/skills/independent-plan-review/SKILL.md",
+    ".agents/skills/pr-review/SKILL.md",
+    ".agents/skills/production-planning/SKILL.md",
+    ".agents/skills/prototype-design/SKILL.md",
+    ".agents/skills/prototype-evaluation/SKILL.md",
+    ".agents/skills/workflow-onboarding/SKILL.md",
+    ".ai-workflow/managed/prompts/c2c-independent-plan-review.md",
+    ".ai-workflow/managed/prompts/c2c-pr-review.md",
+    ".ai-workflow/managed/prompts/c2c-production-plan-refinement.md",
+    ".ai-workflow/managed/prompts/c2c-production-planning.md",
+    ".ai-workflow/managed/prompts/c2c-prototype-design.md",
+    ".ai-workflow/managed/prompts/c2c-prototype-evaluation.md",
+    ".ai-workflow/managed/templates/concept-brief.md",
+    ".ai-workflow/managed/templates/final-pr-body.md",
+    ".ai-workflow/managed/templates/implementation-plan.md",
+    ".ai-workflow/managed/templates/local-pr-draft.md",
+    ".ai-workflow/managed/templates/project-config.json",
+    ".ai-workflow/managed/templates/prototype-handoff.md",
+    ".ai-workflow/managed/templates/review-record.md",
+    ".ai-workflow/managed/templates/state.md",
+    ".ai-workflow/managed/workflow.json",
+    ".ai-workflow/managed/workflow-state.schema.json"
+  ],
+  "conflicting_files": [
+    ".agents/skills/codex-plan-review-loop/SKILL.md"
+  ],
+  "updated_at": "2026-09-05T04:44:47.075Z"
+}

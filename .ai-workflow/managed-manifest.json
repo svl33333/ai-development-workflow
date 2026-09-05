@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "files": [
+    ".agents/skills/codex-plan-review-loop/SKILL.md",
+    ".agents/skills/independent-plan-review/SKILL.md",
+    ".agents/skills/pr-review/SKILL.md",
+    ".agents/skills/production-planning/SKILL.md",
+    ".agents/skills/prototype-design/SKILL.md",
+    ".agents/skills/prototype-evaluation/SKILL.md",
+    ".agents/skills/workflow-onboarding/SKILL.md",
+    ".ai-workflow/config.json",
+    ".ai-workflow/managed/prompts/c2c-independent-plan-review.md",
+    ".ai-workflow/managed/prompts/c2c-pr-review.md",
+    ".ai-workflow/managed/prompts/c2c-production-plan-refinement.md",
+    ".ai-workflow/managed/prompts/c2c-production-planning.md",
+    ".ai-workflow/managed/prompts/c2c-prototype-design.md",
+    ".ai-workflow/managed/prompts/c2c-prototype-evaluation.md",
+    ".ai-workflow/managed/templates/concept-brief.md",
+    ".ai-workflow/managed/templates/final-pr-body.md",
+    ".ai-workflow/managed/templates/implementation-plan.md",
+    ".ai-workflow/managed/templates/local-pr-draft.md",
+    ".ai-workflow/managed/templates/project-config.json",
+    ".ai-workflow/managed/templates/prototype-handoff.md",
+    ".ai-workflow/managed/templates/review-record.md",
+    ".ai-workflow/managed/templates/state.md",
+    ".ai-workflow/managed/workflow.json",
+    ".ai-workflow/managed/workflow-state.schema.json",
+    ".github/copilot-instructions.md"
+  ]
+}
