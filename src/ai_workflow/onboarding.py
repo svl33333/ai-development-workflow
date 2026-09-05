@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -77,4 +78,16 @@ def run_onboarding(
             temporary_directory.cleanup()
     write_json_atomically(evidence_path, evidence)
     handle_bridge_request({**BridgeRequest(product_root.name, "onboarding", "ensure_orchestrator").as_dict(), "product_path": str(product_root)})
+    # The event is only considered delivered after the local control-plane consumer
+    # acknowledges it. This keeps Python onboarding and the Node orchestrator durable
+    # without requiring either environment to reach across the other.
+    cli = source_root / "src" / "cli.js"
+    if not cli.is_file():
+        raise RuntimeError("master Node control-plane CLI is missing; bridge event cannot be acknowledged")
+    completed = subprocess.run(["node", str(cli), "consume-bridge", "--product", str(product_root)], capture_output=True, text=True)
+    if completed.returncode != 0:
+        evidence["status"] = "failed"
+        evidence["error"] = completed.stderr.strip() or "bridge consumer failed"
+        write_json_atomically(evidence_path, evidence)
+        raise RuntimeError(evidence["error"])
     return evidence

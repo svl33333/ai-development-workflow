@@ -6,7 +6,7 @@ import { createExecutionEngine } from './execution-engine.js';
 export function createProductionWorkflow({ productPath, c2c, projectResolver, credentialStore, credentialKey, repository, request, evidenceProvider, issueGateway, executionEngine, childAdapter, gitAdapter, integrate, test }) {
   const github = createGitHubAdapter({ credentialStore, credentialKey, repository, request });
   if (!issueGateway) throw new Error('production workflow requires an Issue #4 gateway');
-  const engine = executionEngine ?? (childAdapter && gitAdapter ? createExecutionEngine({ root: productPath, childAdapter, gitAdapter, integrate, test }) : null);
+  const engine = executionEngine ?? (childAdapter && gitAdapter && typeof integrate === 'function' && typeof test === 'function' ? createExecutionEngine({ root: productPath, childAdapter, gitAdapter, integrate, test }) : null);
   return new WorkflowOrchestrator(productPath, github, evidenceProvider, c2c, null, projectResolver, repository, engine, createIssueGateway(issueGateway));
 }
 

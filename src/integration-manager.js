@@ -1,5 +1,8 @@
 export class IntegrationManager {
-  constructor({ generation = 1, integrate, test } = {}) { this.generation = generation; this.integrate = integrate ?? (async () => {}); this.test = test ?? (async () => ({ ok: true })); this.integrated = []; }
+  constructor({ generation = 1, integrate, test } = {}) {
+    if (typeof integrate !== 'function' || typeof test !== 'function') throw new Error('real integration and test callbacks are required');
+    this.generation = generation; this.integrate = integrate; this.test = test; this.integrated = [];
+  }
   async integrateResult(result, { generation = this.generation } = {}) { if (generation !== this.generation || result.generation !== this.generation) throw Object.assign(new Error('generation is superseded'), { code: 3 }); if (result.status !== 'SUCCEEDED') throw new Error('only successful child results may be integrated'); if (!result.local_review || result.local_review.blocking_count !== 0 || result.local_review.disposition !== 'approved') throw new Error('local review gate failed'); const integratedRevision = await this.integrate(result); const evidence = await this.test(result); if (!evidence.ok) throw new Error('integration test failed'); const revision = typeof integratedRevision === 'string' ? integratedRevision : integratedRevision?.revision ?? result.commit; this.integrated.push({ unit_id: result.unit_id, commit: result.commit, revision, evidence }); return { ...result, integration: evidence, integrated_revision: revision }; }
   async finalSuite() { const evidence = await this.test({ final: true, integrated: this.integrated }); if (!evidence.ok) throw new Error('final integration suite failed'); return evidence; }
 }
