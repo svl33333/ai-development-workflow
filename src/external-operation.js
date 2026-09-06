@@ -6,9 +6,12 @@ async function executeOperation({ store, record, mutate, verify }) {
   const reservation = store.reserve(record.operation_key, { ...record, status: 'reserved' });
   if (!reservation.acquired) return resumeDecision(reservation.record, await verify(reservation.record));
   let result;
-  try { result = await mutate(record); } catch (error) { if (error.code === 'AUTH_REQUIRED') throw Object.assign(error, { workflow_status: 'auth_waiting' }); if (error.code === 'CONNECTION_REQUIRED') throw Object.assign(error, { workflow_status: 'connection_waiting' }); throw error; }
-  const remote = await verify({ ...record, result });
-  if (!remote || remote.operation_key !== record.operation_key) throw Object.assign(new Error('RESULT_UNKNOWN'), { workflow_status: 'result_unknown' });
-  return { status: 'verified', operation_key: record.operation_key, result, remote_verification: remote };
+  store.update(record.operation_key, { status: 'mutating' });
+  try { result = await mutate(record); } catch (error) { const workflowStatus = error.code === 'AUTH_REQUIRED' ? 'auth_waiting' : error.code === 'CONNECTION_REQUIRED' ? 'connection_waiting' : 'result_unknown'; store.update(record.operation_key, { status: workflowStatus, error: error.message }); throw Object.assign(error, { workflow_status: workflowStatus }); }
+  let remote;
+  try { remote = await verify({ ...record, result }); } catch (error) { store.update(record.operation_key, { status: 'result_unknown', result }); throw Object.assign(error, { workflow_status: 'result_unknown' }); }
+  if (!remote || remote.operation_key !== record.operation_key) { store.update(record.operation_key, { status: 'result_unknown', result }); throw Object.assign(new Error('RESULT_UNKNOWN'), { workflow_status: 'result_unknown' }); }
+  const verified = store.update(record.operation_key, { status: 'verified', result, remote_verification: remote });
+  return { ...verified, remote_verification: remote };
 }
 module.exports = { githubOperationKey, chatgptOperationKey, resumeDecision, executeOperation };
