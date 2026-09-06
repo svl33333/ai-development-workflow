@@ -41,7 +41,7 @@ export class WorkflowOrchestrator {
     const resolved = await this.projectResolver(kind, state); if (resolved.status !== 'resolved' || !verifyProjectBinding(resolved.project, { workspace: state.project_id, repository: this.expectedRepository })) throw Object.assign(new Error('ChatGPT Project resolution or binding verification failed'), { code: 4 });
     const actual = resolved.project;
     const request = sanitizeRequest(createRequest({ taskId: `workflow-${operation}`, iteration: state.revision, operation, workspace: state.project_id, workId: state.work_id, stage, inputs: state.artifacts.map((a) => a.path), readScope: ['state', 'artifacts'], expected: 'structured response' }));
-    const runner = new ConversationRunner({ adapter: this.c2c, stateStore: this.store });
+    const runner = new ConversationRunner({ adapter: this.c2c, stateStore: this.store, generation: this.generation });
     const role = operation === 'independent_plan_review' ? 'plan_review' : operation === 'pr_review' ? 'pr_review' : 'planning';
     const response = parseResponse(await runner.run({ taskId: request.task_id, iteration: request.iteration, messageId: `${operation}-${state.revision}`, project: actual, workspace: state.project_id, role, stage, message: JSON.stringify(request), conversationId }));
     const persisted = await this.state(); const actualConversationId = persisted.conversation.conversation_id;
@@ -179,7 +179,7 @@ export class WorkflowOrchestrator {
     const artifact = await writeArtifact(this.productPath, { projectId: state.project_id, stage: 'production_issue_waiting_review', workId: state.work_id, artifactType: 'production-issue', version: state.revision + 1 }, body);
     if (!this.syntheticEvidence && !this.issueGateway) throw Object.assign(new Error("Issue #4 gateway is required before live Issue creation"), { code: 4 }); const transport = this.issueGateway ?? this.github; const created = transport?.createIssue ? await transport.createIssue({ title: `Production work: ${state.work_id}`, body, repository: this.expectedRepository }) : {};
     const issueIdentity = { repository: this.expectedRepository, number: created.number ?? null, node_id: created.node_id ?? null, url: created.url ?? null, provisional_id: `${this.expectedRepository}:${state.work_id}` };
-    await this.store.update((current) => ({ ...current, issue_identity: issueIdentity, artifacts: [...(current.artifacts ?? []), { kind: 'issue', path: artifact, version: current.revision + 1 }] }));
+    await this.store.fencedUpdate(this.generation, (current) => ({ ...current, issue_identity: issueIdentity, artifacts: [...(current.artifacts ?? []), { kind: 'issue', path: artifact, version: current.revision + 1 }] }));
     return this.setStage('production_issue_waiting_review', 'waiting_for_human');
   }
   async issueCreated() {

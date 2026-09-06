@@ -1,9 +1,10 @@
 export class ConversationRunner {
-  constructor({ adapter, stateStore, retry = {} }) {
+  constructor({ adapter, stateStore, retry = {}, generation = null }) {
     this.adapter = adapter;
     this.stateStore = stateStore;
     this.maxRetries = retry.maxRetries ?? 2;
     this.baseDelayMs = retry.baseDelayMs ?? 10;
+    this.generation = generation;
   }
 
   async run({ taskId, iteration, messageId, project, message, conversationId = null, workspace = null, role = 'unspecified', stage = 'unspecified' }) {
@@ -49,7 +50,8 @@ export class ConversationRunner {
   }
 
   async recordDelivery({ taskId, iteration, messageId, conversationId, deliveryState, remoteMessageId = null, project = null, workspace = null, role = 'unspecified', stage = 'unspecified' }) {
-    await this.stateStore.update((state) => {
+    const update = this.generation === null ? this.stateStore.update.bind(this.stateStore) : this.stateStore.fencedUpdate.bind(this.stateStore, this.generation);
+    await update((state) => {
       const sentMessages = state.conversation?.sent_messages ?? [];
       const previous = sentMessages.find((entry) => entry.task_id === taskId && entry.iteration === iteration && entry.message_id === messageId);
       const entry = { task_id: taskId, iteration, message_id: messageId, conversation_id: conversationId, delivery_state: deliveryState, remote_message_id: remoteMessageId ?? previous?.remote_message_id ?? null };
