@@ -9,8 +9,7 @@ const responseSchema = require('../schemas/review-response.schema.json');
 function containsSecret(value) { return /(token|password|secret|api[_-]?key|authorization)/i.test(JSON.stringify(value)); }
 function digestAtRevision(repositoryRoot, revision, relativePath) {
   const objectId = execFileSync('git', ['-C', repositoryRoot, 'rev-parse', `${revision}:${relativePath}`], { encoding: 'utf8' }).trim();
-  const bytes = execFileSync('git', ['-C', repositoryRoot, 'show', `${revision}:${relativePath}`]);
-  return { objectId, digest: require('./canonical').sha256(bytes), byte_length: bytes.length };
+  return { objectId };
 }
 function preflight(bundle, context = {}) {
   const errors = [];
@@ -28,12 +27,17 @@ function preflight(bundle, context = {}) {
   if (bundle.approval_receipt?.revision !== bundle.target_revision) errors.push('APPROVAL_REVISION_MISMATCH');
   if (bundle.allowed_metadata_revision !== bundle.approval_receipt?.digest) errors.push('METADATA_APPROVAL_MISMATCH');
   if (context.reviewTaskId && context.reviewTaskId !== bundle.task_id) errors.push('TASK_BINDING_MISMATCH');
-  if (context.workspaceRoot) {
+  const requiredContext = ['workspaceRoot', 'project', 'reviewTaskId', 'expectedInputRevision', 'expectedPresentationDigest', 'expectedIteration', 'approvalDigest', 'target_revision', 'base_revision'];
+  for (const key of requiredContext) if (context[key] === undefined || context[key] === null) errors.push(`REVIEW_CONTEXT_REQUIRED:${key}`);
+  if (context.workspaceRoot && context.project && context.reviewTaskId && context.expectedInputRevision && context.expectedPresentationDigest && context.expectedIteration !== undefined && context.approvalDigest && context.target_revision && context.base_revision) {
     for (const input of bundle.inputs || []) {
       try {
-        const actual = digestAtRevision(context.workspaceRoot, input.revision, input.path);
-        if (input.hash_basis !== 'working_tree_bytes' || input.digest !== actual.digest || input.byte_length !== actual.byte_length) errors.push(`INPUT_DIGEST_MISMATCH:${input.path}`);
-        if (input.git_object_id && input.git_object_id.value !== actual.objectId) errors.push(`INPUT_OBJECT_ID_MISMATCH:${input.path}`);
+        const absolutePath = path.resolve(context.workspaceRoot, input.path);
+        if (absolutePath !== context.workspaceRoot && !absolutePath.startsWith(`${path.resolve(context.workspaceRoot)}${path.sep}`)) throw new Error('PATH_ESCAPE');
+        const actual = workingTreeDigest(absolutePath);
+        const revisionObject = digestAtRevision(context.workspaceRoot, input.revision, input.path);
+        if (input.hash_basis !== actual.basis || input.digest !== actual.value || input.byte_length !== actual.byte_length) errors.push(`INPUT_DIGEST_MISMATCH:${input.path}`);
+        if (input.git_object_id.value !== revisionObject.objectId) errors.push(`INPUT_OBJECT_ID_MISMATCH:${input.path}`);
       } catch { errors.push(`INPUT_UNREADABLE:${input.path}`); }
   }
   }
