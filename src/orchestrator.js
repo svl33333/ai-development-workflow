@@ -30,6 +30,9 @@ export class WorkflowOrchestrator {
   constructor(productPath, github = null, evidenceProvider = null, c2c = null, projectProvider = null, projectResolver = null, expectedRepository = null, executionEngine = null, issueGateway = null) { this.productPath = productPath; this.store = new StateStore(productPath); this.generation = null; this.syntheticEvidence = path.resolve(productPath).includes(`${path.sep}fixtures${path.sep}`) || github?.synthetic === true; this.github = github ?? (this.syntheticEvidence ? createFakeGitHubAdapter() : null); this.executionEngine = executionEngine; this.issueGateway = issueGateway; this.c2c = c2c ?? (this.syntheticEvidence ? createFakeC2CAdapter() : null); this.expectedRepository = expectedRepository ?? 'fixture/repository'; this.projectProvider = projectProvider ?? (async (kind) => { if (!this.syntheticEvidence) throw Object.assign(new Error('live ChatGPT Project provider is required'), { code: 4 }); return desiredProject(kind); }); this.projectResolver = projectResolver ?? (async (kind, state) => { const project = await this.projectProvider(kind); if (!verifyProject(project, kind)) return { status: 'binding_mismatch', project }; return { status: 'resolved', project: { ...project, workspace: state.project_id, repository: this.expectedRepository } }; }); this.evidenceProvider = evidenceProvider ?? (async (state) => { if (!this.syntheticEvidence) throw new Error('live evidence provider is required outside fixtures'); return { pr_number: state.pr_number ?? 1, target_revision: state.current_revision ?? state.base_revision ?? 'workspace-head', test_run_id: state.test_run_id ?? 'phase1-local-001', test_artifact: state.test_artifact ?? 'work/runs/phase1-test-run.md', review_artifact: state.review_artifact ?? 'work/local-pr-draft.md', review_iteration: state.review_iteration ?? 0, unresolved_blocking_findings: state.unresolved_blocking_findings ?? 0 }; }); }
   async state() { return (await this.store.read()).state; }
   async assertActiveGeneration(state = null) { const current = state ?? await this.state(); if (this.generation !== null && current.orchestrator_generation !== this.generation) throw Object.assign(new Error('orchestrator generation is superseded'), { code: 3 }); this.generation ??= current.orchestrator_generation; return current; }
+  async reserveExternalOperation(operation, targetRevision) {
+    return this.store.fencedUpdate(this.generation, (current) => ({ ...current, active_external_operation: { operation, generation: this.generation, target_revision: targetRevision, status: 'reserved', reserved_at: new Date().toISOString() } }));
+  }
   async setStage(stage, status = 'ready', nextAction = actions[stage]) {
     const action = nextAction ?? 'none'; const current = await this.assertActiveGeneration();
     const artifact = await writeArtifact(this.productPath, { projectId: current.project_id, stage, workId: current.work_id, artifactType: 'stage-log', version: current.revision + 1 }, `# Stage transition\n\n- from: ${current.stage}\n- to: ${stage}\n- status: ${status}\n- next_action: ${action}`);
@@ -72,7 +75,7 @@ export class WorkflowOrchestrator {
       if (current.stage === 'production_issue_waiting_review' && !(current.presentation_receipts ?? []).some((receipt) => receipt.artifact_kind === 'issue' && receipt.artifact_path === currentIssueArtifact?.path && receipt.approval_status === 'pending' && JSON.stringify(receipt.issue_identity) === JSON.stringify(current.issue_identity) && receipt.work_id === current.work_id)) {
         return { stage: current.stage, next_stage: target, mutation: false, requires_approval: false, blocked: true, reason: 'issue artifact must be presented before approval' };
       }
-      try { const approval = await this.loadApproval(gateKind); if (approval.valid !== true || approval.work_id !== current.work_id) throw new Error('invalid approval'); const boundKinds = { prototype_implementation: ['prototype_design'], production_spec: ['spec', 'production_spec'], production_plan: ['plan', 'production_plan'] }[gateKind]; if (boundKinds && !this.syntheticEvidence && !(await this.approvalMatchesCurrentPresentation(current, approval, boundKinds))) throw new Error('stale approval binding'); if (gateKind === 'prototype_implementation' && !this.syntheticEvidence && (current.qualifying_prototype_review_iteration < 3 || !current.prototype_model_confirmed || !current.prototype_review_conversation_id || !current.prototype_model_user_confirmed || (current.execution_plan && (!approval.manifest_digest || approval.manifest_digest !== current.prototype_execution_plan_digest)))) throw new Error('prototype review gate is incomplete'); if (gateKind === 'production_plan' && (!approval.manifest_digest || approval.manifest_digest !== current.execution_plan_digest)) throw new Error('stale execution-plan approval'); }
+      try { const approval = await this.loadApproval(gateKind); if (approval.valid !== true || approval.work_id !== current.work_id) throw new Error('invalid approval'); const boundKinds = { prototype_implementation: ['prototype_design'], production_spec: ['spec', 'production_spec'], production_plan: ['plan', 'production_plan'] }[gateKind]; if (boundKinds && !this.syntheticEvidence && !(await this.approvalMatchesCurrentPresentation(current, approval, boundKinds))) throw new Error('stale approval binding'); if (gateKind === 'prototype_implementation' && !this.syntheticEvidence && (current.qualifying_prototype_review_iteration < 3 || !current.prototype_model_confirmed || !current.prototype_review_conversation_id || !current.prototype_model_user_confirmed || !approval.manifest_digest || approval.manifest_digest !== current.prototype_execution_plan_digest)) throw new Error('prototype review gate is incomplete'); if (gateKind === 'production_plan' && (!approval.manifest_digest || approval.manifest_digest !== current.execution_plan_digest)) throw new Error('stale execution-plan approval'); }
       catch { return { stage: current.stage, next_stage: target, mutation: false, requires_approval: true }; }
       if (current.stage === 'prototype_design') await this.setStage('prototype_implementation', 'running');
       else if (current.stage === 'promotion_waiting_approval') await this.setStage('production_grilling', 'running');
@@ -128,8 +131,14 @@ export class WorkflowOrchestrator {
     }
     const approval = createApproval({ kind, approved_by: 'human', work_id: state.work_id === 'unassigned' ? 'fixture-work' : state.work_id, artifact_version: 1, ...extra });
     await fs.mkdir(path.join(this.productPath, '.ai-workflow', 'approvals'), { recursive: true });
-    await this.store.fencedUpdate(this.generation, (current) => current);
-    await fs.writeFile(path.join(this.productPath, '.ai-workflow', 'approvals', `${kind}.json`), JSON.stringify(approval, null, 2));
+    const approvalPath = path.join(this.productPath, '.ai-workflow', 'approvals', `${kind}.json`);
+    const lockState = await this.state();
+    const lockKey = `${lockState.project_id}-${lockState.work_id}`;
+    await this.store.withLock(lockKey, async () => {
+      const current = await this.state();
+      if (current.orchestrator_generation !== this.generation || current.orchestrator_status !== 'ACTIVE') throw Object.assign(new Error('orchestrator generation is superseded'), { code: 3 });
+      await fs.writeFile(approvalPath, JSON.stringify(approval, null, 2));
+    });
     return approval;
   }
   async approvalMatchesCurrentPresentation(state, approval, kinds) {
@@ -167,9 +176,9 @@ export class WorkflowOrchestrator {
   }
   async promotionApproved() { await this.approve('promotion'); return this.setStage('production_grilling', 'running'); }
   async productionGrilled() {
-    const state = await this.state();
+    const state = await this.assertActiveGeneration();
     const artifact = await writeArtifact(this.productPath, { projectId: state.project_id, stage: 'production_spec_waiting_approval', workId: state.work_id, artifactType: 'production-spec', version: state.revision + 1 }, `# Production Specification\n\n- work_id: ${state.work_id}\n- source: approved grilling record\n`);
-    await this.store.update((current) => ({ ...current, artifacts: [...(current.artifacts ?? []), { kind: 'production_spec', path: artifact, version: current.revision + 1 }] }));
+    await this.store.fencedUpdate(this.generation, (current) => ({ ...current, artifacts: [...(current.artifacts ?? []), { kind: 'production_spec', path: artifact, version: current.revision + 1 }] }));
     return this.setStage('production_spec_waiting_approval', 'waiting_for_human');
   }
   async productionSpecApproved() { await this.approve('production_spec'); return this.setStage('production_issue_creating', 'running'); }
@@ -184,7 +193,7 @@ export class WorkflowOrchestrator {
   }
   async issueCreated() {
     const plan = await this.chatgptStep('production_plan', 'production_planning');
-    await this.store.update((state) => ({ ...state, review_context: { ...state.review_context, planning_conversation_id: plan.conversation_id } }));
+    await this.store.fencedUpdate(this.generation, (state) => ({ ...state, review_context: { ...state.review_context, planning_conversation_id: plan.conversation_id } }));
     return this.setStage('production_planning', 'waiting_for_chatgpt');
   }
   async planReviewed() {
@@ -193,7 +202,7 @@ export class WorkflowOrchestrator {
     const review = await this.chatgptStep('independent_plan_review', 'production_plan_review', { conversationId: before.review_context.active_plan_review_conversation_id });
     if (review.conversation_id === before.review_context.planning_conversation_id) throw new Error('plan review must use a conversation separate from planning');
     const findings = review.findings ?? [];
-    const updated = await this.store.update((current) => {
+    const updated = await this.store.fencedUpdate(this.generation, (current) => {
       const activeConversationId = current.review_context.active_plan_review_conversation_id ?? review.conversation_id;
       if (activeConversationId !== review.conversation_id) throw new Error('plan review conversation changed without replacement approval');
       const round = current.review_history.filter((entry) => entry.stage === 'production_plan_review' && entry.role === 'plan_review' && entry.conversation_id === activeConversationId).length + 1;
@@ -213,7 +222,7 @@ export class WorkflowOrchestrator {
     const before = await this.state();
     if (!before.review_context.planning_conversation_id) throw new Error('planning conversation is required for plan improvement');
     const refinement = await this.chatgptStep('production_plan_refinement', 'production_plan_improvement', { conversationId: before.review_context.planning_conversation_id });
-    const updated = await this.store.update((current) => {
+    const updated = await this.store.fencedUpdate(this.generation, (current) => {
       const dispositions = new Map((refinement.dispositions ?? []).map((disposition) => [disposition.finding_id, disposition]));
       const reviewHistory = current.review_history.map((entry, index, all) => index === all.length - 1
         ? (() => {
@@ -239,7 +248,7 @@ export class WorkflowOrchestrator {
     if (executionPlan && Number.isInteger(executionPlan.max_parallel_codex_tasks) && Array.isArray(executionPlan.units)) { const unsigned = { ...executionPlan }; delete unsigned.approval_digest; manifestDigest = crypto.createHash('sha256').update(JSON.stringify(unsigned)).digest('hex'); executionPlan = { ...executionPlan, approval_digest: manifestDigest }; }
     if (!manifestDigest && !this.syntheticEvidence) throw new Error('a JSON execution-plan manifest is required before production approval');
     await this.approve('production_plan', manifestDigest ? { manifest_digest: manifestDigest } : {});
-    if (executionPlan) await this.store.update((current) => ({ ...current, execution_plan: executionPlan, execution_plan_digest: manifestDigest }));
+    if (executionPlan) await this.store.fencedUpdate(this.generation, (current) => ({ ...current, execution_plan: executionPlan, execution_plan_digest: manifestDigest }));
     return this.setStage('production_implementation', 'running');
   }
   async replacePlanReviewConversation() {
@@ -252,13 +261,13 @@ export class WorkflowOrchestrator {
     const resolved = await this.projectResolver('production', state); if (resolved.status !== 'resolved' || !verifyProjectBinding(resolved.project, { workspace: state.project_id, repository: this.expectedRepository })) throw Object.assign(new Error('ChatGPT Project resolution or binding verification failed'), { code: 4 }); const project = resolved.project;
     const replacement = await this.c2c.startConversation({ project });
     await fs.unlink(path.join(this.productPath, '.ai-workflow', 'approvals', 'review_conversation_replacement.json'));
-    return this.store.update((current) => ({ ...current, qualifying_plan_review_iteration: 0, review_context: { ...current.review_context, active_plan_review_conversation_id: replacement.conversationId, active_plan_review_project_id: project.id ?? project.name, active_plan_review_history_revision: current.revision + 1, active_plan_review_non_resumable_reason: null, replacement_history: [...current.review_context.replacement_history, { old_conversation_id: context.active_plan_review_conversation_id, new_conversation_id: replacement.conversationId, reason: context.active_plan_review_non_resumable_reason }] } }));
+    return this.store.fencedUpdate(this.generation, (current) => ({ ...current, qualifying_plan_review_iteration: 0, review_context: { ...current.review_context, active_plan_review_conversation_id: replacement.conversationId, active_plan_review_project_id: project.id ?? project.name, active_plan_review_history_revision: current.revision + 1, active_plan_review_non_resumable_reason: null, replacement_history: [...current.review_context.replacement_history, { old_conversation_id: context.active_plan_review_conversation_id, new_conversation_id: replacement.conversationId, reason: context.active_plan_review_non_resumable_reason }] } }));
   }
   async implementationComplete() { const state = await this.assertActiveGeneration(); const planArtifact = [...(state.artifacts ?? [])].reverse().find((artifact) => artifact.kind === 'plan' || artifact.kind === 'production_plan'); let plan = state.execution_plan ?? null; if (!plan && planArtifact) { try { plan = JSON.parse(await fs.readFile(path.resolve(this.productPath, planArtifact.path), 'utf8')); } catch { plan = null; } } if (plan && this.executionEngine) { const approval = await this.loadApproval('production_plan'); if (!approval.manifest_digest || approval.manifest_digest !== plan.approval_digest || approval.manifest_digest !== state.execution_plan_digest) throw new Error('approved execution plan digest is stale or missing'); const execution = await this.executionEngine.run(plan, { baseRevision: state.current_revision ?? state.base_revision ?? 'HEAD', activeGeneration: state.orchestrator_generation, approvedDigest: approval.manifest_digest, assertActiveGeneration: () => this.assertActiveGeneration() }); await this.store.fencedUpdate(this.generation, (current) => ({ ...current, execution_result: execution, current_revision: execution.current_revision ?? current.current_revision })); } else if (plan && !this.syntheticEvidence) throw new Error('approved execution plan requires a configured execution engine'); return this.setStage('production_pr_draft', 'running'); }
   async prReviewed() {
     const review = await this.chatgptStep('pr_review', 'production_pr_review');
     const blocking = (review.findings ?? []).filter((finding) => ['CRITICAL', 'HIGH', 'IMPORTANT'].includes(String(finding.severity ?? '').toUpperCase()));
-    await this.store.update((current) => ({ ...current, unresolved_blocking_findings: blocking.length, pr_review_findings: review.findings ?? [] }));
+    await this.store.fencedUpdate(this.generation, (current) => ({ ...current, unresolved_blocking_findings: blocking.length, pr_review_findings: review.findings ?? [] }));
     return blocking.length ? this.setStage('production_fix', 'running') : this.setStage('production_pr_review', 'waiting_for_human');
   }
   async productionFixCompleted() {
@@ -282,7 +291,7 @@ export class WorkflowOrchestrator {
     if (kinds) { const current = [...(state.presentation_receipts ?? [])].reverse().find((receipt) => receipt.presentation_id === approval.presentation_id && receipt.approval_status === 'pending' && kinds.includes(receipt.artifact_kind)); if (!current || current.digest !== approval.artifact_digest || current.canonical_revision !== approval.canonical_revision) throw Object.assign(new Error(`${kind} approval is not bound to the current presentation`), { code: 4 }); }
     return approval;
   }
-  async publish() { if (!this.github) throw Object.assign(new Error('live GitHub adapter is required'), { code: 4 }); const state = await this.assertActiveGeneration(); const evidence = await this.evidenceProvider(state); await this.requireApproval('pr_publish', { work_id: state.work_id, ...evidence }); if (!(await this.hasCurrentPresentation(state, ['pr_review', 'pr']))) throw Object.assign(new Error('PR review artifact must be presented before publishing'), { code: 4 }); const created = await this.github.createPullRequest({ head: evidence.target_revision, issue_url: 'https://example.invalid/issues/1' }); const artifact = await writeArtifact(this.productPath, { projectId: state.project_id, stage: 'production_published', workId: state.work_id, artifactType: 'pr', version: state.revision + 1 }, `# Pull Request\n\n- number: ${created.number ?? evidence.pr_number ?? 'unknown'}\n- head: ${created.head ?? evidence.target_revision}\n`); await this.store.update((current) => ({ ...current, artifacts: [...(current.artifacts ?? []), { kind: 'pr', path: artifact, version: current.revision + 1 }] })); return this.setStage('production_published', 'waiting_for_human'); }
+  async publish() { if (!this.github) throw Object.assign(new Error('live GitHub adapter is required'), { code: 4 }); const state = await this.assertActiveGeneration(); const evidence = await this.evidenceProvider(state); await this.requireApproval('pr_publish', { work_id: state.work_id, ...evidence }); if (!(await this.hasCurrentPresentation(state, ['pr_review', 'pr']))) throw Object.assign(new Error('PR review artifact must be presented before publishing'), { code: 4 }); await this.reserveExternalOperation('publish', evidence.target_revision); const created = await this.github.createPullRequest({ head: evidence.target_revision, issue_url: 'https://example.invalid/issues/1' }); await this.assertActiveGeneration(); const artifact = await writeArtifact(this.productPath, { projectId: state.project_id, stage: 'production_published', workId: state.work_id, artifactType: 'pr', version: state.revision + 1 }, `# Pull Request\n\n- number: ${created.number ?? evidence.pr_number ?? 'unknown'}\n- head: ${created.head ?? evidence.target_revision}\n`); await this.store.fencedUpdate(this.generation, (current) => ({ ...current, active_external_operation: null, artifacts: [...(current.artifacts ?? []), { kind: 'pr', path: artifact, version: current.revision + 1 }] })); return this.setStage('production_published', 'waiting_for_human'); }
   async mergeApproved() { await this.assertActiveGeneration(); const evidence = await this.evidenceProvider(await this.state()); await this.approve('pr_merge', evidence); return this.setStage('production_merge_waiting_approval', 'ready'); }
-  async merge() { if (!this.github) throw Object.assign(new Error('live GitHub adapter is required'), { code: 4 }); const state = await this.assertActiveGeneration(); const evidence = await this.evidenceProvider(state); await this.requireApproval('pr_merge', { work_id: state.work_id, ...evidence }); if (!(await this.hasCurrentPresentation(state, ['pr_review', 'pr']))) throw Object.assign(new Error('PR review artifact must be presented before merging'), { code: 4 }); await this.github.mergePullRequest({ number: evidence.pr_number, head: evidence.target_revision }); return this.setStage('completed', 'completed', null); }
+  async merge() { if (!this.github) throw Object.assign(new Error('live GitHub adapter is required'), { code: 4 }); const state = await this.assertActiveGeneration(); const evidence = await this.evidenceProvider(state); await this.requireApproval('pr_merge', { work_id: state.work_id, ...evidence }); if (!(await this.hasCurrentPresentation(state, ['pr_review', 'pr']))) throw Object.assign(new Error('PR review artifact must be presented before merging'), { code: 4 }); await this.reserveExternalOperation('merge', evidence.target_revision); await this.github.mergePullRequest({ number: evidence.pr_number, head: evidence.target_revision }); await this.assertActiveGeneration(); await this.store.fencedUpdate(this.generation, (current) => ({ ...current, active_external_operation: null })); return this.setStage('completed', 'completed', null); }
 }

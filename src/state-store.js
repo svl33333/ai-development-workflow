@@ -45,6 +45,7 @@ function normalizeLegacyState(state) {
     orchestrator_status: state.orchestrator_status ?? 'ACTIVE',
     issue_identity: state.issue_identity ?? null,
     connection_binding: state.connection_binding ?? null,
+    active_external_operation: state.active_external_operation ?? null,
     conversation_registry: state.conversation_registry ?? {},
     presentation_receipts: state.presentation_receipts ?? [],
     plan_review_iteration: state.plan_review_iteration ?? 0,

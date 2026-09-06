@@ -38,7 +38,7 @@ export function initialState(projectId, workflowVersion = 1) {
     current_revision: null, next_action: 'create_concept_brief', stop_reason: null, revision: 1,
     plan_review_iteration: 0, qualifying_plan_review_iteration: 0, review_history: [],
     prototype_review_iteration: 0, qualifying_prototype_review_iteration: 0, prototype_model_confirmed: false, prototype_review_conversation_id: null, prototype_required_model: null, prototype_actual_model: null, prototype_model_user_confirmed: false,
-    issue_identity: null, connection_binding: null, conversation_registry: {}, presentation_receipts: [],
+    issue_identity: null, connection_binding: null, conversation_registry: {}, presentation_receipts: [], active_external_operation: null,
     review_context: {
       planning_conversation_id: null, active_plan_review_conversation_id: null,
       active_plan_review_project_id: null, active_plan_review_history_revision: 0,
