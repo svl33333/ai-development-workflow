@@ -48,6 +48,6 @@ export async function run(args) {
     console.log(JSON.stringify({ mode, current, candidate, compatible, changed, applied: true, direction: 'common-master-to-product' }, null, 2)); return 0;
   }
   const r = await store.read();
-  if (command === 'next') { const validation = await validateProduct(root); if (!validation.ok) { console.log(JSON.stringify({ ok: false, errors: validation.errors }, null, 2)); return 1; } const result = await createCliWorkflow({ productPath: root }).next(); console.log(JSON.stringify({ ok: true, ...result }, null, 2)); return 0; }
+  if (command === 'next') { const validation = await validateProduct(root); if (!validation.ok) { console.log(JSON.stringify({ ok: false, errors: validation.errors }, null, 2)); return 1; } const result = await (await createCliWorkflow({ productPath: root })).next(); console.log(JSON.stringify({ ok: true, ...result }, null, 2)); return 0; }
   console.log(JSON.stringify({ stage: r.state.stage, next_action: r.state.next_action, blocked: r.state.status === 'blocked' }, null, 2)); return 0;
 }

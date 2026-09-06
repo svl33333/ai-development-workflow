@@ -3,6 +3,7 @@ import { createGitHubAdapter } from './adapters/github.js';
 import { createIssueGateway } from './adapters/issue-gateway.js';
 import { createExecutionEngine } from './execution-engine.js';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export function createProductionWorkflow({ productPath, c2c, projectResolver, credentialStore, credentialKey, repository, request, evidenceProvider, issueGateway, executionEngine, childAdapter, gitAdapter, integrate, test }) {
   const github = createGitHubAdapter({ credentialStore, credentialKey, repository, request });
@@ -11,9 +12,20 @@ export function createProductionWorkflow({ productPath, c2c, projectResolver, cr
   return new WorkflowOrchestrator(productPath, github, evidenceProvider, c2c, null, projectResolver, repository, engine, createIssueGateway(issueGateway));
 }
 
-export function createCliWorkflow({ productPath }) {
+export async function createCliWorkflow({ productPath, dependencies = null }) {
   if (path.resolve(productPath).includes(`${path.sep}fixtures${path.sep}`)) return new WorkflowOrchestrator(productPath);
-  throw Object.assign(new Error('live CLI requires the production workflow composition with C2C, Issue, GitHub, execution, and integration adapters'), { code: 4 });
+  let resolved = dependencies;
+  if (!resolved) {
+    const modulePath = path.join(productPath, '.ai-workflow', 'runtime.mjs');
+    try {
+      const runtime = await import(pathToFileURL(modulePath).href);
+      resolved = typeof runtime.default === 'function' ? await runtime.default({ productPath }) : runtime.dependencies;
+    } catch (error) {
+      if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+    }
+  }
+  if (!resolved || typeof resolved !== 'object') throw Object.assign(new Error('live CLI requires .ai-workflow/runtime.mjs or injected production workflow dependencies'), { code: 4 });
+  return createProductionWorkflow({ productPath, ...resolved });
 }
 
 export function createCodexAdapter({ exec = async () => ({ exitCode: 0, output: '' }) } = {}) {
