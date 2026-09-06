@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "evidence_type": "durable_execution_record",
+  "revision": "fa711ecf8f0c932996a18183d90d9329bd2add84",
+  "implementation_revision": "e86934f4842a3ebb4f8935bcea2222613c744560",
+  "review_revision": "fa711ecf8f0c932996a18183d90d9329bd2add84",
+  "allowed_metadata_scope": {"base_revision": "fa711ecf8f0c932996a18183d90d9329bd2add84", "paths": ["docs/implementation/issue-10-execution-record.md", "docs/implementation/issue-10-execution-evidence-b8b4cca.json", "docs/implementation/issue-10-execution-evidence-fa711ec.json"], "commit_policy": "one metadata-only commit after review_revision"},
+  "commands": [
+    {"command": "npm ci", "exit_status": 0},
+    {"command": "npm test", "exit_status": 0, "test_count": 40},
+    {"command": "npm run validate:fixtures", "exit_status": 0, "fixture_count": 4},
+    {"command": "git diff --check", "exit_status": 0}
+  ],
+  "executed_at": "2026-09-07T02:30:54.1924233+09:00",
+  "record_digest": "c3ecbc0d83182591598fcf8caff54dd52799949ddfd5ea5563b75f991cf1acf2"
+}
