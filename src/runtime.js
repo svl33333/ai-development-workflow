@@ -2,12 +2,18 @@ import { WorkflowOrchestrator } from './orchestrator.js';
 import { createGitHubAdapter } from './adapters/github.js';
 import { createIssueGateway } from './adapters/issue-gateway.js';
 import { createExecutionEngine } from './execution-engine.js';
+import path from 'node:path';
 
 export function createProductionWorkflow({ productPath, c2c, projectResolver, credentialStore, credentialKey, repository, request, evidenceProvider, issueGateway, executionEngine, childAdapter, gitAdapter, integrate, test }) {
   const github = createGitHubAdapter({ credentialStore, credentialKey, repository, request });
   if (!issueGateway) throw new Error('production workflow requires an Issue #4 gateway');
   const engine = executionEngine ?? (childAdapter && gitAdapter && typeof integrate === 'function' && typeof test === 'function' ? createExecutionEngine({ root: productPath, childAdapter, gitAdapter, integrate, test }) : null);
   return new WorkflowOrchestrator(productPath, github, evidenceProvider, c2c, null, projectResolver, repository, engine, createIssueGateway(issueGateway));
+}
+
+export function createCliWorkflow({ productPath }) {
+  if (path.resolve(productPath).includes(`${path.sep}fixtures${path.sep}`)) return new WorkflowOrchestrator(productPath);
+  throw Object.assign(new Error('live CLI requires the production workflow composition with C2C, Issue, GitHub, execution, and integration adapters'), { code: 4 });
 }
 
 export function createCodexAdapter({ exec = async () => ({ exitCode: 0, output: '' }) } = {}) {
