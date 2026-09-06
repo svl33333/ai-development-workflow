@@ -3,7 +3,7 @@
 ## Review target
 
 - base revision: `d5c426cfb3327c502c5d58972596e536fef10147`
-- implementation revision: `ba0b460d7b68e0530ba02daa9163a8c084046b0c`
+- implementation revision: `2ef7c120ba4ee142c9c54f7974a2a82862afc620`
 - implementation scope: `package.json`, `package-lock.json`, `src/`, `schemas/`, `fixtures/`, `test/`, and Issue #10 execution records
 - external writes: none
 - live E2E: not run; fake/contract coverage is recorded as the substitute
