@@ -8,7 +8,7 @@ async function executeOperation({ store, record, mutate, verify }) {
     const existing = reservation.record;
     const remote = await verify(existing);
     if (existing.status === 'verified' || (existing.status === 'result_unknown' && remote?.operation_key === existing.operation_key)) return { ...existing, remote_verification: remote };
-    if (existing.status === 'result_unknown' && !remote) throw Object.assign(new Error('RESULT_UNKNOWN'), { workflow_status: 'result_unknown' });
+    if (existing.status === 'result_unknown') throw Object.assign(new Error('RESULT_UNKNOWN'), { workflow_status: 'result_unknown' });
     record = { ...existing, ...record };
   }
   let result;
