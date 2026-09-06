@@ -1,6 +1,10 @@
-export function classifyFinding(finding) {
-  const severity = finding.severity ?? 'SUGGESTION';
-  if (!['CRITICAL', 'IMPORTANT', 'SUGGESTION'].includes(severity)) throw new Error(`unknown severity: ${severity}`);
-  const autoFix = finding.blocks_progress === true && finding.requires_spec_change === false && finding.in_scope === true;
-  return { ...finding, severity, auto_fix: autoFix, action: finding.requires_spec_change ? 'HUMAN_DECISION' : autoFix ? 'AUTO_FIX_TEST_REVIEW' : 'RECORD' };
+const { preflight } = require('./review-preflight');
+function validateResponse(response, bundle) {
+  const errors = [];
+  for (const key of ['task_id', 'iteration', 'target_revision', 'findings']) if (response[key] === undefined) errors.push(`RESPONSE_REQUIRED: ${key}`);
+  if (response.task_id !== bundle.task_id || response.iteration !== bundle.iteration || response.target_revision !== bundle.target_revision) errors.push('RESPONSE_BINDING_MISMATCH');
+  for (const finding of response.findings || []) for (const key of ['finding_id', 'severity', 'evidence_path', 'disposition']) if (!finding[key]) errors.push(`FINDING_REQUIRED: ${key}`);
+  return { ok: errors.length === 0, errors };
 }
+function prepareReview(bundle, context) { const result = preflight(bundle, context); if (!result.ok) throw new Error(`REVIEW_PREFLIGHT_FAILED: ${result.errors.join(',')}`); return result; }
+module.exports = { prepareReview, validateResponse };

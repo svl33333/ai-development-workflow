@@ -1,8 +1,2 @@
-export class IntegrationManager {
-  constructor({ generation = 1, integrate, test } = {}) {
-    if (typeof integrate !== 'function' || typeof test !== 'function') throw new Error('real integration and test callbacks are required');
-    this.generation = generation; this.integrate = integrate; this.test = test; this.integrated = [];
-  }
-  async integrateResult(result, { generation = this.generation, assertActiveGeneration = null } = {}) { await assertActiveGeneration?.(); if (generation !== this.generation || result.generation !== this.generation) throw Object.assign(new Error('generation is superseded'), { code: 3 }); if (result.status !== 'SUCCEEDED') throw new Error('only successful child results may be integrated'); if (!result.local_review || result.local_review.blocking_count !== 0 || result.local_review.disposition !== 'approved') throw new Error('local review gate failed'); if (!result.commit || !result.artifact_digest || !result.tests?.ok || result.local_review.reviewed_revision !== result.commit) throw new Error('child result evidence gate failed'); await assertActiveGeneration?.(); const integratedRevision = await this.integrate(result, { generation }); await assertActiveGeneration?.(); const evidence = await this.test(result, { generation }); if (!evidence.ok) throw new Error('integration test failed'); const revision = typeof integratedRevision === 'string' ? integratedRevision : integratedRevision?.revision ?? result.commit; this.integrated.push({ unit_id: result.unit_id, commit: result.commit, revision, evidence }); return { ...result, integration: evidence, integrated_revision: revision }; }
-  async finalSuite() { const evidence = await this.test({ final: true, integrated: this.integrated }); if (!evidence.ok) throw new Error('final integration suite failed'); return evidence; }
-}
+class IntegrationManager { integrate(result, expected) { if (!result || result.task_id !== expected.task_id || result.base_revision !== expected.base_revision) throw new Error('CHILD_RESULT_BINDING_MISMATCH'); return { ...result, integrated: false, status: 'READY_FOR_HUMAN_INTEGRATION' }; } }
+module.exports = { IntegrationManager };

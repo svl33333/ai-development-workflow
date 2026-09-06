@@ -1,0 +1,6 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { githubOperationKey, chatgptOperationKey, resumeDecision } = require('../src/external-operation');
+test('ChatGPT operation key is scoped without GitHub identity', () => { const a = chatgptOperationKey({ connectorIdentity: 'c', workspaceIdentity: 'w', projectIdentity: 'p', conversationIdentity: 'conv', taskId: 't', stage: 'review', iteration: 1, bundleDigest: 'a'.repeat(64), targetRevision: 'r' }); const b = chatgptOperationKey({ connectorIdentity: 'c', workspaceIdentity: 'w', projectIdentity: 'p', conversationIdentity: 'conv', taskId: 't', stage: 'review', iteration: 2, bundleDigest: 'a'.repeat(64), targetRevision: 'r' }); assert.notEqual(a, b); });
+test('unknown result is never recreated without remote verification', () => { const record = { status: 'result_unknown', operation_key: 'k' }; assert.equal(resumeDecision(record, null), 'blocked'); assert.equal(resumeDecision(record, { operation_key: 'k' }), 'reuse'); });
+test('GitHub key changes with target identity', () => { const common = { operationType: 'issue_create', repositoryIdentity: 'repo', taskId: 't', generation: 1, targetRevision: 'r' }; assert.notEqual(githubOperationKey({ ...common, issueOrPrIdentity: 'a' }), githubOperationKey({ ...common, issueOrPrIdentity: 'b' })); });
