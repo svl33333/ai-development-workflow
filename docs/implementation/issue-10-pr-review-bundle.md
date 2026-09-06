@@ -5,9 +5,11 @@
 - base revision: `d5c426cfb3327c502c5d58972596e536fef10147`
 - implementation revision: `072fc7ba3a608c658d16d7d17c1bc4476124cdc3`
 - review revision: `c7cf2eabb69bae5c6f52208aed5e254ceb5b9721`
-- allowed metadata revisions: `9ffa96adee7b99d0e3599fa578101aaca37eb4d3`, `c7cf2eabb69bae5c6f52208aed5e254ceb5b9721`
-- allowed metadata paths: `docs/implementation/issue-10-pr-review-bundle.md`, `docs/implementation/issue-10-execution-record.md`
-- implementation scope: `package.json`, `package-lock.json`, `src/`, `schemas/`, `fixtures/`, `test/`, and Issue #10 execution records
+- allowed metadata commits: `9ffa96adee7b99d0e3599fa578101aaca37eb4d3`, `c7cf2eabb69bae5c6f52208aed5e254ceb5b9721`
+- path scope: implementation `package.json`, `package-lock.json`, `src/`, `schemas/`, `fixtures/`, `test/`; metadata `docs/implementation/issue-10-pr-review-bundle.md`, `docs/implementation/issue-10-execution-record.md`
+- expected change scope: implementation paths are checked against `base_revision..implementation_revision`; metadata commits are checked individually against `implementation_revision..review_revision`
+- work identity: task, issue, project, workspace, repository, branch, generation
+- presentation target: `review_revision` plus the human presentation artifact digest
 - external writes: none
 - live E2E: not run; fake/contract coverage is recorded as the substitute
 

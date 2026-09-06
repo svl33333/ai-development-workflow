@@ -29,3 +29,11 @@ GitHub write、ChatGPT送信、child process launch、PR、merge、live E2E は�
 - `npm test`: 24/24 passed（レビューHEADで実行）
 - `npm run validate:fixtures`: 2 fixtures passed
 - `node src/cli.js status --json`: side-effect-free `uninitialized` output
+
+## Independent review follow-up
+
+- RQ-01/02: review bundle now separates base, implementation, and review revisions; allowed metadata commit set, path scope, expected change scope, work identity, and presentation target are schema fields with independent preflight checks.
+- RQ-04: re-review validates a loaded prior record, prior finding IDs, fix revisions, and changed-file ranges against Git.
+- RQ-06: plan review qualification is derived from reread review records and a reread human approval receipt; aggregate counters and `NEEDS_WORK` responses cannot qualify.
+- RQ-07: real Git fixtures cover named branches, durable locks, start-time HEAD/branch/generation checks, restart recovery, cleanup, and explicit serial fallback.
+- RQ-12: acceptance matrix and digest fixtures cover positive/negative contracts, binary bytes, and Git SHA-1/SHA-256 object identity separation. Live E2E remains unexecuted and is not claimed as complete.
