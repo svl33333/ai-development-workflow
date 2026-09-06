@@ -35,7 +35,7 @@ GitHub write、ChatGPT送信、child process launch、PR、merge、live E2E は�
 
 - `npm install --package-lock-only`: passed
 - `npm ci`: passed
-- `npm test`: 40/40 passed
+- `npm test`: 41/41 passed
 - `npm run validate:fixtures`: 4 fixtures passed
 - isolated clean checkout: `npm ci` → `npm test` → `npm run validate:fixtures` passed; Node `v24.16.0`, npm `11.13.0`, Git `2.55.0.windows.3`
 - durable evidence: [issue-10-clean-checkout-evidence.json](issue-10-clean-checkout-evidence.json), bound to implementation revision `e86934f4842a3ebb4f8935bcea2222613c744560`
@@ -45,6 +45,8 @@ GitHub write、ChatGPT送信、child process launch、PR、merge、live E2E は�
 - `node src/cli.js status --json`: side-effect-free `uninitialized` output
 
 ## Independent review follow-up
+
+- M1: isolated checkout materialization uses `git archive HEAD` plus tar extraction, so only tracked files from the committed revision enter the test environment. This was selected over `fs.cpSync` because ignored and untracked files cannot be included by archive construction; the tracked-only negative test proves the exclusion on Windows.
 
 - RQ-01/02: review bundle now separates base, implementation, and review revisions; allowed metadata commit set, path scope, expected change scope, work identity, and presentation target are schema fields with independent preflight checks.
 - RQ-04: re-review validates a loaded prior record, prior finding IDs, fix revisions, and changed-file ranges against Git.
