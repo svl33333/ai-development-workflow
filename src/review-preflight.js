@@ -1,11 +1,17 @@
 const crypto = require('node:crypto');
 const { verifyBundleDigest } = require('./review-bundle');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const { workingTreeDigest } = require('./artifact-digest');
 const Ajv = require('ajv');
 const bundleSchema = require('../schemas/review-bundle.schema.json');
 const responseSchema = require('../schemas/review-response.schema.json');
 function containsSecret(value) { return /(token|password|secret|api[_-]?key|authorization)/i.test(JSON.stringify(value)); }
+function digestAtRevision(repositoryRoot, revision, relativePath) {
+  const objectId = execFileSync('git', ['-C', repositoryRoot, 'rev-parse', `${revision}:${relativePath}`], { encoding: 'utf8' }).trim();
+  const bytes = execFileSync('git', ['-C', repositoryRoot, 'show', `${revision}:${relativePath}`]);
+  return { objectId, digest: require('./canonical').sha256(bytes), byte_length: bytes.length };
+}
 function preflight(bundle, context = {}) {
   const errors = [];
   const validate = new Ajv({ allErrors: true }).compile(bundleSchema);
@@ -25,11 +31,16 @@ function preflight(bundle, context = {}) {
   if (context.workspaceRoot) {
     for (const input of bundle.inputs || []) {
       try {
-        const actual = workingTreeDigest(path.resolve(context.workspaceRoot, input.path));
-        if (input.hash_basis !== actual.basis || input.digest !== actual.value || input.byte_length !== actual.byte_length) errors.push(`INPUT_DIGEST_MISMATCH:${input.path}`);
+        const actual = digestAtRevision(context.workspaceRoot, input.revision, input.path);
+        if (input.hash_basis !== 'working_tree_bytes' || input.digest !== actual.digest || input.byte_length !== actual.byte_length) errors.push(`INPUT_DIGEST_MISMATCH:${input.path}`);
+        if (input.git_object_id && input.git_object_id.value !== actual.objectId) errors.push(`INPUT_OBJECT_ID_MISMATCH:${input.path}`);
       } catch { errors.push(`INPUT_UNREADABLE:${input.path}`); }
-    }
   }
+  }
+  if (context.project) for (const key of ['identity', 'workspace', 'repository']) if (context.project[key] !== bundle.project?.[key]) errors.push(`PROJECT_BINDING_MISMATCH:${key}`);
+  if (context.expectedInputRevision) for (const input of bundle.inputs || []) if (input.revision !== context.expectedInputRevision) errors.push(`INPUT_REVISION_MISMATCH:${input.path}`);
+  if (context.expectedPresentationDigest && bundle.presentation_receipt?.digest !== context.expectedPresentationDigest) errors.push('PRESENTATION_RECEIPT_MISMATCH');
+  if (context.expectedIteration !== undefined && bundle.iteration !== context.expectedIteration) errors.push('ITERATION_MISMATCH');
   return { ok: errors.length === 0, errors, checked_at: new Date().toISOString() };
 }
 function operationKey(parts) { return crypto.createHash('sha256').update(parts.join('\n')).digest('hex'); }
