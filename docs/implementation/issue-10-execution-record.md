@@ -38,6 +38,7 @@ GitHub write、ChatGPT送信、child process launch、PR、merge、live E2E は�
 - `npm test`: 40/40 passed
 - `npm run validate:fixtures`: 4 fixtures passed
 - isolated clean checkout: `npm ci` → `npm test` → `npm run validate:fixtures` passed; Node `v24.16.0`, npm `11.13.0`, Git `2.55.0.windows.3`
+- durable evidence: [issue-10-clean-checkout-evidence.json](issue-10-clean-checkout-evidence.json), bound to implementation revision `e86934f4842a3ebb4f8935bcea2222613c744560`
 - `node src/cli.js status --json`: side-effect-free `uninitialized` output
 
 ## Independent review follow-up
