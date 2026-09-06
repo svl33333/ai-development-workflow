@@ -15,6 +15,8 @@ test('onboarding initializes an existing product and reports exact ChatGPT Proje
   assert.equal(result.validation.ok, true);
   assert.equal(await fs.stat(path.join(root, '.ai-workflow', 'config.json')).then(() => true), true);
   assert.equal(await fs.stat(path.join(root, '.agents', 'skills', 'workflow-onboarding', 'SKILL.md')).then(() => true), true);
+  assert.equal(await fs.stat(path.join(root, '.ai-workflow', 'managed', 'execution-plan.schema.json')).then(() => true), true);
+  assert.equal(await fs.stat(path.join(root, '.ai-workflow', 'managed', 'child-task-result.schema.json')).then(() => true), true);
   const second = await onboardProduct({ productPath: root, masterPath: process.cwd(), projectId: 'existing-product', baseName: 'Existing Product' });
   assert.ok(second.conflicting_files.length > 0);
   assert.equal(second.validation.ok, true);

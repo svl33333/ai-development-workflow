@@ -59,7 +59,12 @@ export async function onboardProduct({ productPath, masterPath = process.cwd(), 
     await fs.mkdir(target, { recursive: true });
     await copyMissingTree(source, target, targetRelative, report);
   }
-  for (const [sourceRelative, targetRelative] of [['workflow/workflow.json', '.ai-workflow/managed/workflow.json'], ['schemas/workflow-state.schema.json', '.ai-workflow/managed/workflow-state.schema.json']]) {
+  for (const [sourceRelative, targetRelative] of [
+    ['workflow/workflow.json', '.ai-workflow/managed/workflow.json'],
+    ['schemas/workflow-state.schema.json', '.ai-workflow/managed/workflow-state.schema.json'],
+    ['schemas/execution-plan.schema.json', '.ai-workflow/managed/execution-plan.schema.json'],
+    ['schemas/child-task-result.schema.json', '.ai-workflow/managed/child-task-result.schema.json']
+  ]) {
     const source = path.join(masterRoot, sourceRelative);
     const target = path.join(productRoot, targetRelative);
     try {

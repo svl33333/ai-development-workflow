@@ -10,6 +10,7 @@ from .github_issue import GitHubIssueTransport
 from .issue_guard import approve_final_payload, approve_payload, prepare_payload, publish_payload
 from .issue_state import load_state, transition_state
 from .onboarding import run_onboarding
+from .bridge import dispatch, handle_bridge_request
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,6 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
     onboard.add_argument("--master", required=True)
     onboard.add_argument("--ref", default="HEAD")
     onboard.add_argument("--managed", nargs="+", required=True)
+    bridge = subparsers.add_parser("bridge")
+    bridge.add_argument("--request", required=True)
     for name in ("prepare", "approve", "final-approve", "skip-grilling", "publish", "retry", "record-change", "resolve-change", "emergency-change", "retest-scope", "complete-post-review"):
         command = subparsers.add_parser(name)
         command.add_argument("--product", type=Path, required=True)
@@ -74,6 +77,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "onboard":
         print(json.dumps(run_onboarding(product_root=args.product, master_url=args.master, ref=args.ref, managed_paths=args.managed), ensure_ascii=False, indent=2))
         return 0
+    if args.command == "bridge":
+        request = json.loads(args.request)
+        code, response = dispatch(request, handle_bridge_request)
+        print(json.dumps(response, ensure_ascii=False, indent=2))
+        return code
     if args.command == "record-change":
         print(json.dumps(record_change(args.product, args.category, args.reason, args.impact, args.spec_version), ensure_ascii=False, indent=2))
         return 0

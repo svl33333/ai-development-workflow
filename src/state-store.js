@@ -40,13 +40,24 @@ function normalizeLegacyState(state) {
   return {
     ...state,
     schema_version: state.schema_version ?? 1,
+    orchestrator_id: state.orchestrator_id ?? null,
+    orchestrator_generation: state.orchestrator_generation ?? 1,
+    orchestrator_status: state.orchestrator_status ?? 'ACTIVE',
     issue_identity: state.issue_identity ?? null,
     connection_binding: state.connection_binding ?? null,
+    active_external_operation: state.active_external_operation ?? null,
     conversation_registry: state.conversation_registry ?? {},
     presentation_receipts: state.presentation_receipts ?? [],
     plan_review_iteration: state.plan_review_iteration ?? 0,
     qualifying_plan_review_iteration: state.qualifying_plan_review_iteration ?? 0,
     review_history: state.review_history ?? [],
+    prototype_review_iteration: state.prototype_review_iteration ?? 0,
+    qualifying_prototype_review_iteration: state.qualifying_prototype_review_iteration ?? 0,
+    prototype_model_confirmed: state.prototype_model_confirmed ?? false,
+    prototype_review_conversation_id: state.prototype_review_conversation_id ?? null,
+    prototype_required_model: state.prototype_required_model ?? null,
+    prototype_actual_model: state.prototype_actual_model ?? null,
+    prototype_model_user_confirmed: state.prototype_model_user_confirmed ?? false,
     review_context: state.review_context ?? {
       planning_conversation_id: null, active_plan_review_conversation_id: null,
       active_plan_review_project_id: null, active_plan_review_history_revision: 0,
@@ -109,6 +120,12 @@ export class StateStore {
       const temp = `${nextPath}.tmp-${process.pid}`; await fs.writeFile(temp, serializeState(next, current.body)); await fs.rename(temp, nextPath);
       if (current.path !== nextPath) await fs.rm(current.path, { force: true });
       this.activeWorkId = next.work_id; this.projectId = next.project_id; return next;
+    });
+  }
+  async fencedUpdate(generation, mutator) {
+    return this.update((state) => {
+      if (state.orchestrator_generation !== generation || state.orchestrator_status !== 'ACTIVE') throw Object.assign(new Error('orchestrator generation is superseded'), { code: 3 });
+      return mutator(state);
     });
   }
   async withLock(work, fn) {

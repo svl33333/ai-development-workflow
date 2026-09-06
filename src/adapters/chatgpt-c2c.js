@@ -1,4 +1,4 @@
-const OPERATIONS = ['prototype_design', 'prototype_evaluation', 'production_plan', 'production_plan_refinement', 'independent_plan_review', 'pr_review'];
+const OPERATIONS = ['prototype_design', 'prototype_independent_review', 'prototype_refinement', 'prototype_evaluation', 'production_plan', 'production_plan_refinement', 'independent_plan_review', 'pr_review'];
 
 export function createRequest({ taskId, iteration, operation, workspace, workId, stage, inputs = [], readScope = [], expected }) {
   if (!OPERATIONS.includes(operation)) throw new Error(`unsupported C2C operation: ${operation}`);
