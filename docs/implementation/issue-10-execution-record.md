@@ -2,6 +2,8 @@
 
 - 基準: `d5c426cfb3327c502c5d58972596e536fef10147`
 - 実装HEAD: `072fc7ba3a608c658d16d7d17c1bc4476124cdc3`
+- レビューHEAD: `c7cf2eabb69bae5c6f52208aed5e254ceb5b9721`
+- 実装後の許可変更: 上記レビューHEADまでの変更は、この記録とPRレビュー証跡の更新に限定する。
 - remote: `https://github.com/svl33333/ai-development-workflow.git`
 - runtime: Node `v24.16.0`, npm `11.13.0`, Git `2.55.0.windows.3`
 - 親作業ツリーの既存未追跡変更: 保全（削除・上書きなし）
@@ -24,6 +26,6 @@ GitHub write、ChatGPT送信、child process launch、PR、merge、live E2E は�
 
 - `npm install --package-lock-only`: passed
 - `npm ci`: passed
-- `npm test`: 22/22 passed
+- `npm test`: 24/24 passed（レビューHEADで実行）
 - `npm run validate:fixtures`: 2 fixtures passed
 - `node src/cli.js status --json`: side-effect-free `uninitialized` output
