@@ -1,1 +1,1 @@
-{"$schema_id":"workflow-state","schema_version":"1.0.0","workflow_id":"fixture","target_revision":"6c4219457d7336d14c8c9b02ecdc737a563fdc57","status":"draft","plan_approved":false,"preflight_passed":false}
+{"$schema_id":"workflow-state","schema_version":"1.0.0","workflow_id":"fixture","target_revision":"6c4219457d7336d14c8c9b02ecdc737a563fdc57","status":"draft","stage":"onboarding","evidence":{},"plan_approved":false,"preflight_passed":false}
