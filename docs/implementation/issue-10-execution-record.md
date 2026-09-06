@@ -41,6 +41,7 @@ GitHub write、ChatGPT送信、child process launch、PR、merge、live E2E は�
 - durable evidence: [issue-10-clean-checkout-evidence.json](issue-10-clean-checkout-evidence.json), bound to implementation revision `e86934f4842a3ebb4f8935bcea2222613c744560`
 - current execution evidence: [issue-10-execution-evidence-b8b4cca.json](issue-10-execution-evidence-b8b4cca.json), bound to revision `b8b4ccae13360c9646af76eb9bcbf33d9c172297`; its canonical `record_digest` covers the command statuses, counts, and execution time.
 - final review-head execution evidence: [issue-10-execution-evidence-fa711ec.json](issue-10-execution-evidence-fa711ec.json), bound to review HEAD `fa711ecf8f0c932996a18183d90d9329bd2add84`; its canonical `record_digest` covers the rerun command statuses, counts, and execution time.
+- M1 final execution evidence: [issue-10-execution-evidence-6becc7e.json](issue-10-execution-evidence-6becc7e.json), bound to implementation revision `6becc7ed7567ff4e84be295e60525cd90c43ac8b`; the subsequent metadata-only commit contains only this record and its reference.
 - metadata binding: the final metadata commit after `fa711ecf8f0c932996a18183d90d9329bd2add84` is allowed only for the execution-record references and evidence paths listed in `issue-10-execution-evidence-fa711ec.json`; no code or test changes are included in that commit.
 - `node src/cli.js status --json`: side-effect-free `uninitialized` output
 

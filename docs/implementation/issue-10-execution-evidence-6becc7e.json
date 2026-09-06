@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "evidence_type": "durable_execution_record",
+  "revision": "6becc7ed7567ff4e84be295e60525cd90c43ac8b",
+  "commands": [
+    {"command": "npm ci", "exit_status": 0},
+    {"command": "npm test", "exit_status": 0, "test_count": 41},
+    {"command": "npm run validate:fixtures", "exit_status": 0, "fixture_count": 4},
+    {"command": "git diff --check", "exit_status": 0}
+  ],
+  "executed_at": "2026-09-07T02:54:45.7143267+09:00",
+  "record_digest": "d65edb8444a6776eba0fa7eb1db14bef18339d51e2de90e7db66fa5c2a34214b"
+}
