@@ -1,7 +1,7 @@
 # Issue #10 実装実行記録
 
 - 基準: `d5c426cfb3327c502c5d58972596e536fef10147`
-- 実装HEAD: `8ebb951bca8df3921076c4abca970003e1dfd359`
+- 実装HEAD: `ba0b460d7b68e0530ba02daa9163a8c084046b0c`
 - remote: `https://github.com/svl33333/ai-development-workflow.git`
 - runtime: Node `v24.16.0`, npm `11.13.0`, Git `2.55.0.windows.3`
 - 親作業ツリーの既存未追跡変更: 保全（削除・上書きなし）
@@ -24,6 +24,6 @@ GitHub write、ChatGPT送信、child process launch、PR、merge、live E2E は�
 
 - `npm install --package-lock-only`: passed
 - `npm ci`: passed
-- `npm test`: 18/18 passed
+- `npm test`: 21/21 passed
 - `npm run validate:fixtures`: 2 fixtures passed
 - `node src/cli.js status --json`: side-effect-free `uninitialized` output

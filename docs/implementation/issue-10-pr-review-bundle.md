@@ -3,7 +3,7 @@
 ## Review target
 
 - base revision: `d5c426cfb3327c502c5d58972596e536fef10147`
-- implementation revision: `8ebb951bca8df3921076c4abca970003e1dfd359`
+- implementation revision: `ba0b460d7b68e0530ba02daa9163a8c084046b0c`
 - implementation scope: `package.json`, `package-lock.json`, `src/`, `schemas/`, `fixtures/`, `test/`, and Issue #10 execution records
 - external writes: none
 - live E2E: not run; fake/contract coverage is recorded as the substitute
@@ -11,7 +11,7 @@
 ## Verification
 
 - `npm ci`: passed
-- `npm test`: 18 tests passed
+- `npm test`: 21 tests passed
 - `npm run validate:fixtures`: 2 fixtures passed
 - `node src/cli.js status --json`: `{"status":"uninitialized","target_revision":null}`
 
