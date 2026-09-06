@@ -148,10 +148,10 @@ export class WorkflowOrchestrator {
     return false;
   }
   async presentArtifact({ artifactPath, artifactKind, canonicalRevision = null, present }) {
-    const state = await this.state();
+    const state = await this.assertActiveGeneration();
     const receipt = await createPresentationReceipt(this.productPath, { path: artifactPath, kind: artifactKind }, { canonicalRevision, present });
     const persistedReceipt = { ...receipt, approval_status: 'pending', work_id: state.work_id, issue_identity: state.issue_identity };
-    await this.store.update((current) => ({ ...current, presentation_receipts: [...(current.presentation_receipts ?? []).map((item) => item.artifact_path === persistedReceipt.artifact_path ? { ...item, approval_status: 'stale' } : item), persistedReceipt] }));
+    await this.store.fencedUpdate(this.generation, (current) => ({ ...current, presentation_receipts: [...(current.presentation_receipts ?? []).map((item) => item.artifact_path === persistedReceipt.artifact_path ? { ...item, approval_status: 'stale' } : item), persistedReceipt] }));
     return persistedReceipt;
   }
   async begin() { await this.store.setup({ project_id: 'sample-product' }); await this.store.update((s) => ({ ...s, work_id: 'fixture-work' })); const lifecycle = await ensureOrchestrator(this.store); this.generation = lifecycle.generation; await this.chatgptStep('prototype_design', 'prototype_design'); return this.setStage('prototype_design', 'waiting_for_chatgpt'); }
