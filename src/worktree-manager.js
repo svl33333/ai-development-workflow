@@ -93,8 +93,12 @@ class WorktreeManager {
     if (existing && existing.lifecycle !== 'cleaned') throw new Error('WORKTREE_COLLISION');
     if ([...this.records.values()].some((record) => record.lifecycle !== 'cleaned' && (record.worktree_root === root || record.branch === branch))) throw new Error('WORKTREE_COLLISION');
     try { git(this.parentCwd, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]); throw new Error('BRANCH_COLLISION'); } catch (error) { if (error.message === 'BRANCH_COLLISION') throw error; }
-    const executionMode = options.executionMode ?? (options.parallelFallback === 'serial' ? 'serial' : 'parallel');
-    const record = { schema_version: '1.0.0', lifecycle: 'reserved', execution_mode: executionMode, task_id: taskId, worktree_root: root, parent_cwd: this.parentCwd, base_revision: baseRevision, generation, branch, lock_path: this.lockPath(taskId), owner: { task_id: taskId, process_id: process.pid, run_id: options.runId ?? `${process.pid}-${Date.now()}` }, created_at: new Date().toISOString() };
+    const conflictKey = options.conflictKey ?? options.parallelConflictKey;
+    const conflictingRecords = conflictKey ? [...this.records.values()].filter((record) => record.lifecycle !== 'cleaned' && record.conflict_key === conflictKey) : [];
+    const fallback = options.parallelFallback ?? this.parallelFallback;
+    if (conflictingRecords.length > 0 && fallback !== 'serial') throw new Error('PARALLEL_CONFLICT');
+    const executionMode = conflictingRecords.length > 0 || options.executionMode === 'serial' ? 'serial' : 'parallel';
+    const record = { schema_version: '1.0.0', lifecycle: 'reserved', execution_mode: executionMode, parallel_conflict: conflictingRecords.length > 0, serial_after: conflictingRecords.map((item) => item.task_id), conflict_key: conflictKey ?? null, task_id: taskId, worktree_root: root, parent_cwd: this.parentCwd, base_revision: baseRevision, generation, branch, lock_path: this.lockPath(taskId), owner: { task_id: taskId, process_id: process.pid, run_id: options.runId ?? `${process.pid}-${Date.now()}` }, created_at: new Date().toISOString() };
     this.acquireLock(taskId, record.owner);
     return this.persist(record);
   }

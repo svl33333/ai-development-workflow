@@ -46,10 +46,11 @@ function verifyPlanReviewRecords(root, record, expectedRevision) {
     return { ...review, artifact_digest: loaded.digest.value };
   }).sort((a, b) => a.round - b.round);
   const planDigest = record.plan_digest;
+  const latest = reviews[reviews.length - 1];
+  if (!latest || latest.verdict !== 'APPROVE' || latest.plan_digest !== planDigest) throw new Error('PLAN_REVIEW_LATEST_NOT_QUALIFYING');
   const qualifying = reviews.filter((review) => review.verdict === 'APPROVE' && review.plan_digest === planDigest);
-  const hasConsecutiveRounds = qualifying.some((review, index) => qualifying.slice(index, index + 3).length === 3 && qualifying[index + 1].round === review.round + 1 && qualifying[index + 2].round === review.round + 2);
+  const hasConsecutiveRounds = qualifying.some((review, index) => qualifying.slice(index, index + 3).length === 3 && qualifying[index + 1].round === review.round + 1 && qualifying[index + 2].round === review.round + 2 && qualifying[index + 2].round === latest.round);
   if (!hasConsecutiveRounds) throw new Error('PLAN_REVIEW_QUALIFYING_RECORDS_REQUIRED');
-  if (reviews.some((review) => review.verdict === 'NEEDS_WORK') && !qualifying.length) throw new Error('PLAN_REVIEW_NEEDS_WORK');
   for (const review of qualifying) if (review.source_revision && review.source_revision !== expectedRevision) throw new Error('PLAN_REVIEW_REVISION_MISMATCH');
   return { reviews, qualifying };
 }

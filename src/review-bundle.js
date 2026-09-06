@@ -4,6 +4,10 @@ function pathsFromInputs(inputs) {
   return [...new Set((inputs || []).map((input) => input.path))].sort();
 }
 
+function normalizeInputs(inputs) {
+  return (inputs || []).map((input) => ({ ...input, artifact_class: input.artifact_class ?? (input.hash_basis === 'canonical_utf8' ? 'text' : 'binary') }));
+}
+
 function createReviewBundle(input) {
   const required = ['task_id', 'issue_id', 'base_revision', 'iteration', 'conversation', 'project', 'inputs', 'approval_receipt', 'presentation_receipt'];
   for (const key of required) if (input[key] === undefined) throw new Error(`BUNDLE_REQUIRED: ${key}`);
@@ -16,6 +20,8 @@ function createReviewBundle(input) {
     schema_version: '1.0.0',
     hash_algorithm: 'sha256',
     ...input,
+    inputs: normalizeInputs(input.inputs),
+    presentation_receipt: { ...input.presentation_receipt, artifact_digest: input.presentation_receipt.artifact_digest ?? input.presentation_receipt.digest },
     target_revision: input.target_revision ?? reviewRevision,
     implementation_revision: implementationRevision,
     review_revision: reviewRevision,

@@ -10,8 +10,10 @@ The following revision values were recorded by an earlier review round. They are
 - allowed metadata commits: `9ffa96adee7b99d0e3599fa578101aaca37eb4d3`, `c7cf2eabb69bae5c6f52208aed5e254ceb5b9721`
 - path scope: implementation `package.json`, `package-lock.json`, `src/`, `schemas/`, `fixtures/`, `test/`; metadata `docs/implementation/issue-10-pr-review-bundle.md`, `docs/implementation/issue-10-execution-record.md`
 - expected change scope: implementation paths are checked against `base_revision..implementation_revision`; metadata commits are checked individually against `implementation_revision..review_revision`
+- input contract: each input carries its own `revision` and `artifact_class`; Git object ID length is conditional on its algorithm
 - work identity: task, issue, project, workspace, repository, branch, generation
 - presentation target: `review_revision` plus the human presentation artifact digest
+- presentation receipt contract: `presentation_receipt.digest` must equal `presentation_target.artifact_digest`
 - external writes: none
 - live E2E: not run; fake/contract coverage is recorded as the substitute
 

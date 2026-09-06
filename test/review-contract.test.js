@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { createReviewBundle } = require('../src/review-bundle');
+const { createReviewBundle, bundleDigest } = require('../src/review-bundle');
 const { preflight } = require('../src/review-preflight');
 const { validateResponse } = require('../src/review');
 const { workingTreeDigest } = require('../src/artifact-digest');
@@ -62,6 +62,28 @@ test('preflight independently verifies implementation and allowed metadata commi
   assert.deepEqual(b.allowed_metadata_commits, [f.metadata]);
 });
 
+test('preflight accepts inputs pinned to different allowed revisions', () => {
+  const f = fixture();
+  const b = makeBundle(f);
+  const codePath = path.join(f.root, 'src', 'code.js');
+  const codeDigest = workingTreeDigest(codePath);
+  b.path_scope.input_paths.push('src/code.js');
+  b.inputs.push({ path: 'src/code.js', revision: f.implementation, artifact_class: 'text', hash_basis: codeDigest.basis, digest: codeDigest.value, byte_length: codeDigest.byte_length, git_object_id: { algorithm: 'git-sha1', basis: 'git_object_id', value: git(f.root, ['rev-parse', `${f.implementation}:src/code.js`]) } });
+  b.bundle_digest = bundleDigest(b);
+  assert.equal(preflight(b, { ...context(b, f.root), expectedInputRevisions: { 'spec.md': f.review, 'src/code.js': f.implementation } }).ok, true);
+});
+
+test('preflight rejects a stale presentation receipt artifact digest', () => {
+  const f = fixture();
+  const b = makeBundle(f);
+  b.presentation_receipt.digest = 'stale-artifact';
+  b.bundle_digest = bundleDigest(b);
+  const result = preflight(b, context(b, f.root));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.includes('PRESENTATION_RECEIPT_MISMATCH'));
+  assert.ok(result.errors.includes('PRESENTATION_ARTIFACT_MISMATCH'));
+});
+
 test('preflight rejects an unapproved post-implementation code commit', () => {
   const f = fixture();
   fs.writeFileSync(path.join(f.root, 'src', 'code.js'), 'unapproved\n');
@@ -95,4 +117,14 @@ test('re-review verifies prior record digest, finding identity, fix revision, an
   assert.equal(bad.ok, false);
   assert.ok(bad.errors.includes('PRIOR_REVIEW_DIGEST_MISMATCH'));
   assert.ok(bad.errors.includes('PRIOR_FINDING_NOT_FOUND:UNKNOWN'));
+  const omitted = validateResponse({ ...response, findings: [] }, b, { previousReviewRecord: previous, repositoryRoot: f.root });
+  assert.ok(omitted.errors.includes('PRIOR_BLOCKING_FINDING_OMITTED:F-HIGH'));
+});
+
+test('review schema rejects Git object IDs whose length does not match the algorithm', () => {
+  const f = fixture();
+  const b = makeBundle(f);
+  b.inputs[0].git_object_id.value = 'a'.repeat(64);
+  b.bundle_digest = bundleDigest(b);
+  assert.ok(preflight(b, context(b, f.root)).errors.includes('BUNDLE_SCHEMA_INVALID'));
 });

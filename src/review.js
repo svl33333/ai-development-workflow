@@ -41,6 +41,15 @@ function verifyReviewLineage(response, bundle, context = {}) {
   if (!digest || response.prior_review_digest !== digest) errors.push('PRIOR_REVIEW_DIGEST_MISMATCH');
   if (previous.round !== undefined && response.prior_round !== undefined && response.prior_round !== previous.round) errors.push('PRIOR_REVIEW_ROUND_MISMATCH');
   const previousFindings = new Map((previous.findings ?? []).map((finding) => [finding.finding_id, finding]));
+  for (const prior of previousFindings.values()) {
+    if (!['Critical', 'High'].includes(prior.severity)) continue;
+    const linked = (response.findings ?? []).filter((finding) => finding.prior_finding_id === prior.finding_id);
+    if (linked.length === 0) {
+      errors.push(`PRIOR_BLOCKING_FINDING_OMITTED:${prior.finding_id}`);
+      continue;
+    }
+    for (const finding of linked) if (!['fixed', 'carry_forward', 'accepted', 'not_applicable'].includes(finding.disposition)) errors.push(`PRIOR_FINDING_DISPOSITION_REQUIRED:${prior.finding_id}`);
+  }
   const repositoryRoot = context.repositoryRoot ?? bundle.project.workspace;
   for (const finding of response.findings ?? []) {
     if (!finding.prior_finding_id) continue;

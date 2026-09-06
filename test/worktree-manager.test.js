@@ -69,3 +69,25 @@ test('serial fallback is explicit and never overlaps active tasks', () => {
   scheduler.complete('one');
   assert.equal(scheduler.start('two', serial).status, 'RUNNING');
 });
+
+test('parallel conflict is converted to serial execution and starts after the active task finishes', () => {
+  const fixture = repository();
+  const manager = new WorktreeManager(fixture.root, fixture.childRoot, { parallelFallback: 'serial' });
+  const first = manager.reserve('parallel-one', fixture.revision, 1, { conflictKey: 'shared-target' });
+  const second = manager.reserve('parallel-two', fixture.revision, 1, { conflictKey: 'shared-target' });
+  assert.equal(first.execution_mode, 'parallel');
+  assert.equal(second.execution_mode, 'serial');
+  manager.create('parallel-one');
+  manager.create('parallel-two');
+  manager.start('parallel-one', fixture.revision);
+  manager.start('parallel-two', fixture.revision);
+  const scheduler = new TaskScheduler({ parallelFallback: 'serial' });
+  assert.equal(scheduler.start('parallel-one', manager.records.get('parallel-one')).execution_mode, 'parallel');
+  assert.throws(() => scheduler.start('parallel-two', manager.records.get('parallel-two')), /SERIAL_FALLBACK_WAITING/);
+  scheduler.complete('parallel-one');
+  assert.equal(scheduler.start('parallel-two', manager.records.get('parallel-two')).execution_mode, 'serial');
+  manager.finish('parallel-one', 'completed', fixture.revision);
+  manager.finish('parallel-two', 'completed', fixture.revision);
+  manager.cleanup('parallel-one');
+  manager.cleanup('parallel-two');
+});

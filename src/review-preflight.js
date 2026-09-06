@@ -109,6 +109,12 @@ function verifyInputs(bundle, context, errors) {
   for (const input of bundle.inputs || []) {
     try {
       const normalizedPath = normalizeRelativePath(input.path);
+      const expectedRevision = context.expectedInputRevisions?.[normalizedPath] ?? context.expectedInputRevision;
+      if (expectedRevision && input.revision !== expectedRevision) errors.push(`INPUT_REVISION_MISMATCH:${normalizedPath}`);
+      if (input.artifact_class === 'binary' && input.hash_basis === 'canonical_utf8') errors.push(`INPUT_CLASS_BASIS_MISMATCH:${normalizedPath}`);
+      const allowedRevisions = new Set([bundle.base_revision, bundle.implementation_revision, bundle.review_revision, ...bundle.allowed_metadata_commits]);
+      const resolvedInputRevision = resolveRevision(context.workspaceRoot, input.revision);
+      if (![...allowedRevisions].some((revision) => { try { return resolveRevision(context.workspaceRoot, revision) === resolvedInputRevision; } catch { return false; } })) errors.push(`INPUT_REVISION_UNBOUND:${normalizedPath}`);
       const workspaceRoot = path.resolve(context.workspaceRoot);
       const absolutePath = path.resolve(workspaceRoot, normalizedPath);
       if (absolutePath !== workspaceRoot && !absolutePath.startsWith(`${workspaceRoot}${path.sep}`)) throw new Error('PATH_ESCAPE');
@@ -136,14 +142,16 @@ function preflight(bundle, context = {}) {
   if (context.approvalDigest && context.approvalDigest !== bundle.approval_receipt?.digest) errors.push('APPROVAL_RECEIPT_MISMATCH');
   const presentationTarget = context.presentationTarget ?? context.presentation_target;
   if (context.expectedPresentationDigest && context.expectedPresentationDigest !== bundle.presentation_target?.artifact_digest) errors.push('PRESENTATION_RECEIPT_MISMATCH');
+  if (context.expectedPresentationDigest && context.expectedPresentationDigest !== bundle.presentation_receipt?.digest) errors.push('PRESENTATION_RECEIPT_MISMATCH');
   if (presentationTarget && (presentationTarget.revision !== bundle.presentation_target?.revision || presentationTarget.artifact_digest !== bundle.presentation_target?.artifact_digest)) errors.push('PRESENTATION_TARGET_MISMATCH');
+  if (bundle.presentation_receipt?.digest !== bundle.presentation_target?.artifact_digest) errors.push('PRESENTATION_ARTIFACT_MISMATCH');
   if (bundle.allowed_metadata_revision && bundle.allowed_metadata_revision !== bundle.approval_receipt?.digest) errors.push('METADATA_APPROVAL_MISMATCH');
   const requiredContext = ['workspaceRoot', 'project', 'reviewTaskId', 'expectedInputRevision', 'expectedIteration', 'approvalDigest', 'target_revision', 'base_revision'];
   for (const key of requiredContext) if (context[key] === undefined || context[key] === null) errors.push(`REVIEW_CONTEXT_REQUIRED:${key}`);
   if (!context.expectedPresentationDigest && !presentationTarget) errors.push('REVIEW_CONTEXT_REQUIRED:presentationTarget');
   if (context.project) for (const key of ['identity', 'workspace', 'repository']) if (context.project[key] !== bundle.project?.[key]) errors.push(`PROJECT_BINDING_MISMATCH:${key}`);
   if (context.reviewTaskId && context.reviewTaskId !== bundle.task_id) errors.push('TASK_BINDING_MISMATCH');
-  if (context.expectedInputRevision) for (const input of bundle.inputs || []) if (input.revision !== context.expectedInputRevision) errors.push(`INPUT_REVISION_MISMATCH:${input.path}`);
+  if (context.expectedInputRevision) for (const input of bundle.inputs || []) if (input.revision !== context.expectedInputRevision && !context.expectedInputRevisions) errors.push(`INPUT_REVISION_MISMATCH:${input.path}`);
   compareWorkIdentity(bundle, context, errors);
   verifyRevisionContract(bundle, context, errors);
   verifyInputs(bundle, context, errors);

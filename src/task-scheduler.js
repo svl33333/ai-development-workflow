@@ -7,8 +7,12 @@ class TaskScheduler {
   start(taskId, worktree, options = {}) {
     if (!worktree || worktree.parent_cwd === worktree.worktree_root) throw new Error('PARENT_CWD_SHARING_FORBIDDEN');
     if (this.active.has(taskId)) throw new Error('TASK_ALREADY_RUNNING');
-    const executionMode = worktree.execution_mode ?? 'parallel';
+    let executionMode = worktree.execution_mode ?? 'parallel';
     const fallback = options.parallelFallback ?? this.parallelFallback;
+    if (worktree.parallel_conflict) {
+      if (fallback !== 'serial') throw new Error('PARALLEL_EXECUTION_BLOCKED');
+      executionMode = 'serial';
+    }
     if (executionMode === 'serial' && fallback !== 'serial') throw new Error('SERIAL_FALLBACK_NOT_ENABLED');
     if (executionMode === 'serial' && this.active.size > 0) throw new Error('SERIAL_FALLBACK_WAITING');
     if (executionMode !== 'serial' && worktree.parallel_conflict && fallback !== 'serial') throw new Error('PARALLEL_EXECUTION_BLOCKED');
