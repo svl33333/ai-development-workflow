@@ -7,7 +7,7 @@ async function executeOperation({ store, record, mutate, verify }) {
   if (!reservation.acquired) return resumeDecision(reservation.record, await verify(reservation.record));
   let result;
   store.update(record.operation_key, { status: 'mutating' });
-  try { result = await mutate(record); } catch (error) { const workflowStatus = error.code === 'AUTH_REQUIRED' ? 'auth_waiting' : error.code === 'CONNECTION_REQUIRED' ? 'connection_waiting' : 'result_unknown'; store.update(record.operation_key, { status: workflowStatus, error: error.message }); throw Object.assign(error, { workflow_status: workflowStatus }); }
+  try { result = await mutate(record); } catch (error) { const workflowStatus = error.code === 'AUTH_REQUIRED' ? 'auth_waiting' : error.code === 'CONNECTION_REQUIRED' ? 'connection_waiting' : 'result_unknown'; store.update(record.operation_key, { status: workflowStatus === 'result_unknown' ? 'result_unknown' : 'failed', workflow_status: workflowStatus, error: { code: error.code ?? 'UNKNOWN', message: error.message } }); throw Object.assign(error, { workflow_status: workflowStatus }); }
   let remote;
   try { remote = await verify({ ...record, result }); } catch (error) { store.update(record.operation_key, { status: 'result_unknown', result }); throw Object.assign(error, { workflow_status: 'result_unknown' }); }
   if (!remote || remote.operation_key !== record.operation_key) { store.update(record.operation_key, { status: 'result_unknown', result }); throw Object.assign(new Error('RESULT_UNKNOWN'), { workflow_status: 'result_unknown' }); }
