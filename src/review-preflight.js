@@ -1,8 +1,9 @@
 const crypto = require('node:crypto');
 const { verifyBundleDigest } = require('./review-bundle');
 const path = require('node:path');
+const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
-const { workingTreeDigest } = require('./artifact-digest');
+const { workingTreeDigest, canonicalUtf8Digest } = require('./artifact-digest');
 const Ajv = require('ajv');
 const bundleSchema = require('../schemas/review-bundle.schema.json');
 const responseSchema = require('../schemas/review-response.schema.json');
@@ -11,6 +12,7 @@ function digestAtRevision(repositoryRoot, revision, relativePath) {
   const objectId = execFileSync('git', ['-C', repositoryRoot, 'rev-parse', `${revision}:${relativePath}`], { encoding: 'utf8' }).trim();
   return { objectId };
 }
+function repositoryObjectAlgorithm(repositoryRoot) { const format = execFileSync('git', ['-C', repositoryRoot, 'rev-parse', '--show-object-format'], { encoding: 'utf8' }).trim(); return format === 'sha256' ? 'git-sha256' : 'git-sha1'; }
 function preflight(bundle, context = {}) {
   const errors = [];
   const validate = new Ajv({ allErrors: true }).compile(bundleSchema);
@@ -34,10 +36,11 @@ function preflight(bundle, context = {}) {
       try {
         const absolutePath = path.resolve(context.workspaceRoot, input.path);
         if (absolutePath !== context.workspaceRoot && !absolutePath.startsWith(`${path.resolve(context.workspaceRoot)}${path.sep}`)) throw new Error('PATH_ESCAPE');
-        const actual = workingTreeDigest(absolutePath);
+        const actual = input.hash_basis === 'canonical_utf8' ? canonicalUtf8Digest(fs.readFileSync(absolutePath, 'utf8')) : workingTreeDigest(absolutePath);
         const revisionObject = digestAtRevision(context.workspaceRoot, input.revision, input.path);
         if (input.hash_basis !== actual.basis || input.digest !== actual.value || input.byte_length !== actual.byte_length) errors.push(`INPUT_DIGEST_MISMATCH:${input.path}`);
         if (input.git_object_id.value !== revisionObject.objectId) errors.push(`INPUT_OBJECT_ID_MISMATCH:${input.path}`);
+        if (input.git_object_id.algorithm !== repositoryObjectAlgorithm(context.workspaceRoot)) errors.push(`INPUT_OBJECT_ALGORITHM_MISMATCH:${input.path}`);
       } catch { errors.push(`INPUT_UNREADABLE:${input.path}`); }
   }
   }
