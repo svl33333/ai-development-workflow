@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { normalizeRelativePath } = require('./artifact-digest');
+const { assertLatestMainBase } = require('./base-sync-guard');
 
 function git(root, args, options = {}) {
   return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', ...options }).trim();
@@ -26,12 +27,15 @@ function atomicWrite(filePath, value) {
 
 class WorktreeManager {
   constructor(parentCwd, childRoot, options = {}) {
+    if (childRoot && typeof childRoot === 'object') { options = childRoot; childRoot = path.join(parentCwd, '.ai-workflow', 'worktrees'); }
     this.parentCwd = fs.realpathSync(parentCwd);
     this.childRoot = path.resolve(childRoot);
     this.stateRoot = path.resolve(options.stateRoot ?? path.join(this.childRoot, '.workflow-state'));
     this.recordsRoot = path.join(this.stateRoot, 'worktrees');
     this.locksRoot = path.join(this.stateRoot, 'locks');
     this.parallelFallback = options.parallelFallback ?? 'blocked';
+    this.requireLatestMain = options.requireLatestMain ?? false;
+    this.baseSyncGuard = options.baseSyncGuard ?? assertLatestMainBase;
     this.records = new Map();
     this.loadRecords();
   }
@@ -86,6 +90,7 @@ class WorktreeManager {
 
   reserve(taskId, baseRevision, generation = 1, options = {}) {
     this.assertChildRootIsSeparate();
+    if (this.requireLatestMain) this.baseSyncGuard(this.parentCwd, baseRevision);
     const branch = this.branchFor(taskId);
     const root = path.resolve(this.childRoot, safeTaskId(taskId));
     if (root === this.parentCwd || root.startsWith(`${this.parentCwd}${path.sep}`)) throw new Error('PARENT_CWD_SHARING_FORBIDDEN');
