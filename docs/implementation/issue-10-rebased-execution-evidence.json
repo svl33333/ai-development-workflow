@@ -3,6 +3,7 @@
   "issue_id": "10",
   "kind": "rebase_and_latest_main_guard",
   "target_revision": "065da494513c83a5a95075ecb611ed87a838f8e8",
+  "verified_revision": "6273087b4b3d0288ee7c5f5093b9f2d7a57a8a2c",
   "origin_main_fetched": true,
   "rebase_commits_replayed": 29,
   "commands": [
