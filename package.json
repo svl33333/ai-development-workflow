@@ -6,7 +6,7 @@
   "type": "commonjs",
   "engines": { "node": ">=24.0.0", "npm": ">=11.0.0" },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/adapters.test.js test/artifact-digest.test.js test/base-sync-guard.test.js test/bootstrap-clean-checkout.test.js test/external-operation.test.js test/recovery.test.js test/review-contract.test.js test/review.test.js test/workflow.test.js test/worktree-manager.test.js",
     "validate:fixtures": "node src/cli.js validate-fixtures",
     "status": "node src/cli.js status --json"
   },
