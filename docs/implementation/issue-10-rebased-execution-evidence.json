@@ -2,11 +2,11 @@
   "schema_version": "1.0.0",
   "issue_id": "10",
   "kind": "rebase_and_latest_main_guard",
-  "target_revision": "6f41a60db85e1b1fda5a07baf67a7eb64cf67574",
+  "target_revision": "065da494513c83a5a95075ecb611ed87a838f8e8",
   "origin_main_fetched": true,
   "rebase_commits_replayed": 29,
   "commands": [
-    { "command": "node --test Issue #10 target suite", "status": "passed", "tests": 38 },
+    { "command": "npm test (explicit Issue #10 CommonJS harness)", "status": "passed", "tests": 43 },
     { "command": "npm run validate:fixtures", "status": "passed", "fixtures": 4 },
     { "command": "git diff --check", "status": "passed" }
   ],
