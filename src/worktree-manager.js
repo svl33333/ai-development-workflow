@@ -13,7 +13,10 @@ export class WorktreeManager {
   }
   async create({ unitId, runId, baseRevision }) {
     if (!unitId || !runId || !baseRevision) throw new Error('unitId, runId and baseRevision are required');
-    if (this.requireLatestMain && this.git) this.baseSyncGuard(this.root, baseRevision);
+    if (this.requireLatestMain) {
+      if (!this.git) throw new Error('BASE_SYNC_REQUIRED: a real Git adapter is required');
+      this.baseSyncGuard(this.root, baseRevision);
+    }
     const safe = `${unitId}-${runId}`.replace(/[^A-Za-z0-9._-]/g, '-');
     const target = path.join(this.worktreeRoot, safe);
     if (!path.resolve(target).startsWith(`${this.worktreeRoot}${path.sep}`)) throw new Error('worktree escapes configured root');
