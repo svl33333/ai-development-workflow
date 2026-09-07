@@ -4,8 +4,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { WorktreeManager } = require('../src/worktree-manager');
-const { TaskScheduler } = require('../src/task-scheduler');
+const { WorktreeManager } = require('../src/worktree-manager.cjs');
+const { TaskScheduler } = require('../src/task-scheduler.cjs');
 
 function git(root, args) { return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim(); }
 function repository() {
@@ -18,10 +18,11 @@ function repository() {
   git(root, ['commit', '-qm', 'seed']);
   return { root, revision: git(root, ['rev-parse', 'HEAD']), childRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'worktree-children-')) };
 }
+function createManager(fixture, options = {}) { return new WorktreeManager(fixture.root, fixture.childRoot, { baseSyncGuard: () => {}, ...options }); }
 
 test('worktree lifecycle uses a named branch, durable lock, and matching head/generation', () => {
   const fixture = repository();
-  const manager = new WorktreeManager(fixture.root, fixture.childRoot);
+  const manager = createManager(fixture);
   const reserved = manager.reserve('child-1', fixture.revision, 4);
   assert.equal(reserved.branch, 'codex/child-1');
   assert.ok(fs.existsSync(reserved.lock_path));
@@ -37,14 +38,14 @@ test('worktree lifecycle uses a named branch, durable lock, and matching head/ge
 
 test('restart recovery reclaims a dead owner only when the worktree is clean and unchanged', () => {
   const fixture = repository();
-  const manager = new WorktreeManager(fixture.root, fixture.childRoot);
+  const manager = createManager(fixture);
   const reserved = manager.reserve('recoverable', fixture.revision);
   manager.create('recoverable');
   manager.start('recoverable', fixture.revision);
   const persisted = JSON.parse(fs.readFileSync(manager.recordPath('recoverable'), 'utf8'));
   persisted.owner.process_id = 999999;
   fs.writeFileSync(manager.recordPath('recoverable'), JSON.stringify(persisted));
-  const restarted = new WorktreeManager(fixture.root, fixture.childRoot);
+  const restarted = createManager(fixture);
   const recovered = restarted.recover('recoverable');
   assert.equal(recovered.lifecycle, 'created');
   assert.equal(recovered.generation, 2);
@@ -53,12 +54,23 @@ test('restart recovery reclaims a dead owner only when the worktree is clean and
 });
 
 test('parent cwd sharing and duplicate durable reservations are rejected', () => {
-  assert.throws(() => new WorktreeManager(process.cwd(), process.cwd()).reserve('x', 'base'), /PARENT_CWD_SHARING_FORBIDDEN/);
+  assert.throws(() => new WorktreeManager(process.cwd(), process.cwd(), { baseSyncGuard: () => {} }).reserve('x', 'base'), /PARENT_CWD_SHARING_FORBIDDEN/);
   const fixture = repository();
-  const first = new WorktreeManager(fixture.root, fixture.childRoot);
+  const first = createManager(fixture);
   first.reserve('same', fixture.revision);
-  const second = new WorktreeManager(fixture.root, fixture.childRoot);
+  const second = createManager(fixture);
   assert.throws(() => second.reserve('same', fixture.revision), /WORKTREE_COLLISION/);
+});
+
+test('latest-main guard rejects before reserving a worktree or branch', () => {
+  const fixture = repository();
+  let calls = 0;
+  const manager = new WorktreeManager(fixture.root, fixture.childRoot, { baseSyncGuard: () => { calls += 1; throw new Error('BASE_SYNC_REQUIRED'); } });
+  assert.throws(() => manager.reserve('stale', fixture.revision), /BASE_SYNC_REQUIRED/);
+  assert.equal(calls, 1);
+  assert.equal(manager.records.size, 0);
+  assert.equal(fs.existsSync(path.join(fixture.childRoot, '.workflow-state', 'worktrees', 'stale.json')), false);
+  assert.throws(() => execFileSync('git', ['-C', fixture.root, 'show-ref', '--verify', 'refs/heads/codex/stale'], { stdio: 'ignore' }), /Command failed/);
 });
 
 test('serial fallback is explicit and never overlaps active tasks', () => {
@@ -72,7 +84,7 @@ test('serial fallback is explicit and never overlaps active tasks', () => {
 
 test('parallel conflict is converted to serial execution and starts after the active task finishes', () => {
   const fixture = repository();
-  const manager = new WorktreeManager(fixture.root, fixture.childRoot, { parallelFallback: 'serial' });
+  const manager = createManager(fixture, { parallelFallback: 'serial' });
   const first = manager.reserve('parallel-one', fixture.revision, 1, { conflictKey: 'shared-target' });
   const second = manager.reserve('parallel-two', fixture.revision, 1, { conflictKey: 'shared-target' });
   assert.equal(first.execution_mode, 'parallel');

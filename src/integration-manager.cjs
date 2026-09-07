@@ -1,0 +1,2 @@
+class IntegrationManager { integrate(result, expected) { const keys = ['task_id', 'base_revision', 'generation', 'worktree_root', 'artifact_digest', 'plan_digest']; if (!result || keys.some((key) => result[key] !== expected[key])) throw new Error('CHILD_RESULT_BINDING_MISMATCH'); return { ...result, integrated: false, status: 'READY_FOR_HUMAN_INTEGRATION' }; } }
+module.exports = { IntegrationManager };

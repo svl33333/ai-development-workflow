@@ -1,18 +1,140 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const { canonicalJson } = require('./canonical');
-const { validateState } = require('./model');
-const Ajv = require('ajv');
-const operationSchema = require('../schemas/external-operation.schema.json');
-const operationValidator = new Ajv({ allErrors: true }).compile(operationSchema);
-function validateOperation(record) { if (!operationValidator(record)) throw new Error(`OPERATION_SCHEMA_INVALID: ${operationValidator.errors.map((error) => error.instancePath || error.keyword).join(',')}`); }
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { initialState, validateState } from './model.js';
 
-class StateStore {
-  constructor(root) { this.root = root; this.statePath = path.join(root, '.workflow-state', 'workflow-state.json'); this.operations = path.join(root, '.workflow-state', 'external-operations'); }
-  read() { const state = JSON.parse(fs.readFileSync(this.statePath, 'utf8')); validateState(state); return state; }
-  write(state) { validateState(state); fs.mkdirSync(path.dirname(this.statePath), { recursive: true }); const tmp = `${this.statePath}.${process.pid}.tmp`; fs.writeFileSync(tmp, canonicalJson(state), { encoding: 'utf8' }); fs.renameSync(tmp, this.statePath); }
-  reserve(operationKey, record) { validateOperation(record); fs.mkdirSync(this.operations, { recursive: true }); const file = path.join(this.operations, `${operationKey}.json`); try { const fd = fs.openSync(file, 'wx'); fs.writeFileSync(fd, canonicalJson(record)); fs.closeSync(fd); return { acquired: true, record }; } catch (error) { if (error.code !== 'EEXIST') throw error; const existing = JSON.parse(fs.readFileSync(file, 'utf8')); validateOperation(existing); return { acquired: false, record: existing }; } }
-  readOperation(operationKey) { return JSON.parse(fs.readFileSync(path.join(this.operations, `${operationKey}.json`), 'utf8')); }
-  update(operationKey, patch) { fs.mkdirSync(this.operations, { recursive: true }); const file = path.join(this.operations, `${operationKey}.json`); const current = JSON.parse(fs.readFileSync(file, 'utf8')); const next = { ...current, ...patch, operation_key: operationKey, updated_at: new Date().toISOString() }; validateOperation(next); const tmp = `${file}.${process.pid}.tmp`; fs.writeFileSync(tmp, canonicalJson(next), { encoding: 'utf8' }); fs.renameSync(tmp, file); return next; }
+function stateFilename(state) {
+  const safe = (value) => String(value).replace(/[^A-Za-z0-9._-]+/g, '-');
+  return `${safe(state.project_id)}-${safe(state.stage)}-${safe(state.work_id)}-state-v${state.schema_version}.md`;
 }
-module.exports = { StateStore };
+
+function scalar(value) {
+  const v = value.trim();
+  if (v === 'null') return null;
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  if (/^-?\d+$/.test(v)) return Number(v);
+  if (v.startsWith('[') || v.startsWith('{')) { try { return JSON.parse(v); } catch { /* keep invalid YAML visible to validation */ } }
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1);
+  return v;
+}
+
+export function parseFrontMatter(text) {
+  text = text.replace(/\r\n?/g, '\n');
+  if (!text.startsWith('---\n')) throw new Error('state must start with YAML front matter');
+  const end = text.indexOf('\n---', 4);
+  if (end < 0) throw new Error('YAML front matter closing marker is missing');
+  const meta = {}; let section = null;
+  for (const line of text.slice(4, end).split('\n')) {
+    if (!line.trim()) continue;
+    const nested = line.match(/^  ([A-Za-z0-9_]+):\s*(.*)$/);
+    if (nested && section) { meta[section] ??= {}; meta[section][nested[1]] = scalar(nested[2]); continue; }
+    const item = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+    if (item) { section = item[1]; meta[section] = item[2] ? scalar(item[2]) : (section === 'artifacts' ? [] : {}); continue; }
+    const list = line.match(/^  - (.*)$/);
+    if (list && section) { if (!Array.isArray(meta[section])) meta[section] = []; meta[section].push(scalar(list[1])); }
+  }
+  return { meta, body: text.slice(end + 4) };
+}
+
+function normalizeLegacyState(state) {
+  return {
+    ...state,
+    schema_version: state.schema_version ?? 1,
+    orchestrator_id: state.orchestrator_id ?? null,
+    orchestrator_generation: state.orchestrator_generation ?? 1,
+    orchestrator_status: state.orchestrator_status ?? 'ACTIVE',
+    issue_identity: state.issue_identity ?? null,
+    connection_binding: state.connection_binding ?? null,
+    active_external_operation: state.active_external_operation ?? null,
+    conversation_registry: state.conversation_registry ?? {},
+    presentation_receipts: state.presentation_receipts ?? [],
+    plan_review_iteration: state.plan_review_iteration ?? 0,
+    qualifying_plan_review_iteration: state.qualifying_plan_review_iteration ?? 0,
+    review_history: state.review_history ?? [],
+    prototype_review_iteration: state.prototype_review_iteration ?? 0,
+    qualifying_prototype_review_iteration: state.qualifying_prototype_review_iteration ?? 0,
+    prototype_model_confirmed: state.prototype_model_confirmed ?? false,
+    prototype_review_conversation_id: state.prototype_review_conversation_id ?? null,
+    prototype_required_model: state.prototype_required_model ?? null,
+    prototype_actual_model: state.prototype_actual_model ?? null,
+    prototype_model_user_confirmed: state.prototype_model_user_confirmed ?? false,
+    review_context: state.review_context ?? {
+      planning_conversation_id: null, active_plan_review_conversation_id: null,
+      active_plan_review_project_id: null, active_plan_review_history_revision: 0,
+      active_plan_review_non_resumable_reason: null, replacement_history: []
+    },
+    conversation: state.conversation ?? initialState(state.project_id ?? 'legacy').conversation
+  };
+}
+
+function yamlValue(value, indent = '') {
+  if (value && typeof value === 'object') return `${indent}${JSON.stringify(value)}`;
+  return `${indent}${value === null ? 'null' : String(value)}`;
+}
+
+export function serializeState(state, body = '# AI workflow state\n') {
+  const { agent_state, ...top } = state;
+  const lines = Object.entries(top).map(([key, value]) => `${key}: ${yamlValue(value).trim()}`).join('\n');
+  return `---\n${lines}\nagent_state: ${JSON.stringify(agent_state)}\n---\n${body.replace(/^---[\s\S]*?---\n/, '')}`;
+}
+
+export class StateStore {
+  constructor(productPath, scope = {}) { this.root = path.resolve(productPath); this.dir = path.join(this.root, '.ai-workflow'); this.stateDir = path.join(this.dir, 'state'); this.activeWorkId = scope.workId ?? null; this.projectId = scope.projectId ?? null; }
+  async setup(config = {}) {
+    for (const dir of ['state', 'artifacts', 'reviews', 'runs', 'approvals', 'locks', 'pending']) await fs.mkdir(path.join(this.dir, dir), { recursive: true });
+    const configPath = path.join(this.dir, 'config.json');
+    try { await fs.access(configPath); } catch { await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n'); }
+    const statePath = path.join(this.stateDir, stateFilename(initialState(config.project_id ?? path.basename(this.root))));
+    try { await fs.access(statePath); } catch { await fs.writeFile(statePath, serializeState(initialState(config.project_id ?? path.basename(this.root)))); }
+    return statePath;
+  }
+  async read({ projectId = this.projectId, workId = this.activeWorkId } = {}) {
+    const files = (await fs.readdir(this.stateDir)).filter((f) => f.endsWith('.md')).sort();
+    if (!files.length) throw new Error('no state file found');
+    const candidates = [];
+    for (const file of files) {
+      const statePath = path.join(this.stateDir, file);
+      try {
+        const parsed = parseFrontMatter(await fs.readFile(statePath, 'utf8'));
+        candidates.push({ statePath, parsed: { ...parsed, meta: normalizeLegacyState(parsed.meta) } });
+      } catch { /* invalid candidates are reported below */ }
+    }
+    if (!candidates.length) throw new Error('no valid state file found');
+    const scoped = candidates.filter(({ parsed }) => (!projectId || parsed.meta.project_id === projectId) && (!workId || parsed.meta.work_id === workId));
+    if (!scoped.length) throw new Error(`no state found for project/work: ${projectId ?? '*'}/${workId ?? '*'}`);
+    if (!workId && new Set(scoped.map(({ parsed }) => parsed.meta.work_id)).size > 1) throw new Error('state identity is ambiguous; project/work scope is required');
+    scoped.sort((a, b) => (b.parsed.meta.revision ?? 0) - (a.parsed.meta.revision ?? 0));
+    const { statePath, parsed } = scoped[0]; this.activeWorkId ??= parsed.meta.work_id; this.projectId ??= parsed.meta.project_id;
+    const errors = validateState(parsed.meta); if (errors.length) throw new Error(`invalid state: ${errors.join('; ')}`);
+    return { path: statePath, state: parsed.meta, body: parsed.body };
+  }
+  async update(mutator, expectedRevision = null) {
+    const observed = await this.read(); const lockKey = `${observed.state.project_id}-${observed.state.work_id}`;
+    return this.withLock(lockKey, async () => {
+      const current = await this.read();
+      if (expectedRevision !== null && current.state.revision !== expectedRevision) throw Object.assign(new Error(`state revision conflict: expected ${expectedRevision}, got ${current.state.revision}`), { code: 3 });
+      const next = mutator(structuredClone(current.state));
+      const errors = validateState(next); if (errors.length) throw new Error(`invalid next state: ${errors.join('; ')}`);
+      next.revision += 1; next.updated_at = new Date().toISOString(); next.agent_state.updated_at = next.updated_at;
+      const nextPath = path.join(this.stateDir, stateFilename(next));
+      const temp = `${nextPath}.tmp-${process.pid}`; await fs.writeFile(temp, serializeState(next, current.body)); await fs.rename(temp, nextPath);
+      if (current.path !== nextPath) await fs.rm(current.path, { force: true });
+      this.activeWorkId = next.work_id; this.projectId = next.project_id; return next;
+    });
+  }
+  async fencedUpdate(generation, mutator) {
+    return this.update((state) => {
+      if (state.orchestrator_generation !== generation || state.orchestrator_status !== 'ACTIVE') throw Object.assign(new Error('orchestrator generation is superseded'), { code: 3 });
+      return mutator(state);
+    });
+  }
+  async withLock(work, fn) {
+    const lock = path.join(this.dir, 'locks', `${work}.lock`); await fs.mkdir(path.dirname(lock), { recursive: true });
+    let handle;
+    let acquired = false;
+    try { handle = await fs.open(lock, 'wx'); acquired = true; await handle.writeFile(JSON.stringify({ owner: `${process.pid}`, work, acquired_at: new Date().toISOString() })); return await fn(); }
+    catch (error) { if (error.code === 'EEXIST') throw Object.assign(new Error(`state lock exists: ${work}`), { code: 3 }); throw error; }
+    finally { await handle?.close(); if (acquired) await fs.rm(lock, { force: true }); }
+  }
+}
+

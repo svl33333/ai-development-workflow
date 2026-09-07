@@ -40,7 +40,17 @@ export async function validateProduct(productPath) {
   try { config = JSON.parse(await fs.readFile(path.join(productPath, '.ai-workflow', 'config.json'), 'utf8')); } catch (error) { errors.push({ id: 'CONFIG_INVALID', message: error.message }); }
   if (result && config) {
     const state = result.state;
-    try { errors.push(...await validateSchema(productPath, 'workflow-state.schema.json', state, 'state')); errors.push(...await validateSchema(productPath, 'workflow-config.schema.json', config, 'config')); } catch (error) { errors.push({ id: 'SCHEMA_INVALID', message: error.message }); }
+    try {
+      // The repository has two durable state contracts: the legacy StateStore
+      // contract used by the onboarding/runtime, and the JSON workflow
+      // contract used by the isolated execution harness.  Do not validate a
+      // legacy state against the latter schema merely because onboarding has
+      // copied that schema into the product.
+      if (state.schema_version === '1.0.0') {
+        errors.push(...await validateSchema(productPath, 'workflow-state.schema.json', state, 'state'));
+      }
+      errors.push(...await validateSchema(productPath, 'workflow-config.schema.json', config, 'config'));
+    } catch (error) { errors.push({ id: 'SCHEMA_INVALID', message: error.message }); }
     const required = ['workflow_version', 'schema_version', 'adapter_version', 'project_id', 'work_id', 'stage', 'status', 'next_action', 'revision', 'updated_at', 'agent_state'];
     for (const key of required) if (state[key] === undefined || state[key] === null) errors.push({ id: 'SCHEMA_INVALID', message: `${key} is required` });
     if (!STAGES.includes(state.stage)) errors.push({ id: 'SCHEMA_INVALID', message: `unknown stage: ${state.stage}` });

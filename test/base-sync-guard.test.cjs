@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { assertLatestMainBase } = require('../src/base-sync-guard');
+const { assertLatestMainBase } = require('../src/base-sync-guard.cjs');
 
 test('base sync guard fetches origin and requires latest main ancestor', () => {
   const calls = [];

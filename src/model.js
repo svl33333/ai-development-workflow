@@ -1,19 +1,87 @@
-const { canonicalJson } = require('./canonical');
-const Ajv = require('ajv');
-const stateValidator = new Ajv({ allErrors: true }).compile(require('../schemas/workflow-state.schema.json'));
-const { validateStageEvidence } = require('./stage-evidence');
-const STAGES = ['prototype_intake','prototype_design','prototype_implementation','prototype_evaluation','promotion_waiting_approval','production_grilling','production_spec_waiting_approval','production_issue_creating','production_issue_waiting_review','production_issue_ready','production_planning','production_plan_review','production_plan_improvement','production_plan_waiting_approval','production_implementation','production_pr_draft','production_pr_review','production_fix','production_publish_waiting_approval','production_published','production_merge_waiting_approval','completed','stopped','blocked'];
-const APPROVAL_KINDS = ['prototype_implementation','promotion','production_spec','production_issue_review','production_plan','pr_publish','pr_merge','destructive_operation','spec_change','update','review_conversation_replacement'];
-const STATES = ['draft','preflighted','reviewing','approved','completed','blocked','auth_waiting','connection_waiting','result_unknown'];
-const WORKFLOW_STAGES = ['onboarding','prototype_intake','prototype_design','prototype_review','prototype_execution','specification','issue_approval','planning','plan_review','implementation','testing','pr_review','publish','merge'];
-const STAGE_REQUIREMENTS = Object.fromEntries(WORKFLOW_STAGES.map((s) => [s, ['artifact_digest','source_revision','record_path','conversation_role']]));
-const STAGE_STATUSES = { onboarding:['draft','preflighted'],prototype_intake:['draft','reviewing'],prototype_design:['reviewing'],prototype_review:['reviewing'],prototype_execution:['reviewing'],specification:['reviewing'],issue_approval:['reviewing'],planning:['reviewing'],plan_review:['reviewing'],implementation:['approved'],testing:['approved'],pr_review:['approved'],publish:['approved'],merge:['completed'] };
-const STAGE_ENTRY_STATUSES = { prototype_intake:['preflighted'],prototype_design:['reviewing'],prototype_review:['reviewing'],prototype_execution:['reviewing'],specification:['reviewing'],issue_approval:['reviewing'],planning:['reviewing'],plan_review:['reviewing'],implementation:['reviewing'],testing:['approved'],pr_review:['approved'],publish:['approved'],merge:['approved'] };
-const PROTECTED_TRANSITION_FIELDS = ['stage','evidence','plan_approved','approved_revision','approval_receipt','plan_digest','issue_id'];
-function deriveQualifyingPlanReviewIteration(h,id){if(!id||!Array.isArray(h))return 0;const q=h.filter((r)=>r.stage==='production_plan_review'&&r.role==='plan_review'&&r.conversation_id===id&&r.improved===true&&r.dispositions_complete===true);let n=1;for(const r of q){if(r.round!==n)return n-1;n+=1;}return q.length;}
-function initialState(projectId,workflowVersion=1){const now=new Date().toISOString();return {workflow_version:workflowVersion,schema_version:1,adapter_version:1,orchestrator_id:null,orchestrator_generation:1,orchestrator_status:'ACTIVE',project_id:projectId,work_id:'unassigned',stage:'prototype_intake',status:'ready',agent:'codex',chatgpt_project:'prototype',artifacts:[],base_revision:null,current_revision:null,next_action:'create_concept_brief',stop_reason:null,revision:1,plan_review_iteration:0,qualifying_plan_review_iteration:0,review_history:[],issue_identity:null,connection_binding:null,conversation_registry:{},presentation_receipts:[],active_external_operation:null,review_context:{planning_conversation_id:null,active_plan_review_conversation_id:null,active_plan_review_project_id:null,active_plan_review_history_revision:0,active_plan_review_non_resumable_reason:null,replacement_history:[]},updated_at:now,conversation:{task_id:null,iteration:0,project_id:null,project_url:null,conversation_id:null,conversation_url:null,workspace:null,role:null,stage:null,state:'INIT',last_message_id:null,next_operation:null,failure_reason:null,sent_messages:[]},agent_state:{agent:'codex',stage:'prototype_intake',status:'ready',started_at:now,updated_at:now,waiting_reason:null,next_action:'create_concept_brief',error:null}};}
-function validateState(state){if(state?.schema_version==='1.0.0'){if(!STATES.includes(state.status))throw new Error(`STATE_STATUS: ${state.status}`);if(!state.workflow_id||!state.target_revision)throw new Error('STATE_IDENTITY_REQUIRED');if(!WORKFLOW_STAGES.includes(state.stage))throw new Error('STATE_STAGE_REQUIRED');if(!state.evidence||typeof state.evidence!=='object')throw new Error('STATE_EVIDENCE_REQUIRED');if(!stateValidator(state))throw new Error(`STATE_SCHEMA_INVALID: ${stateValidator.errors.map((e)=>e.instancePath||e.keyword).join(',')}`);return true;}const req=['workflow_version','project_id','work_id','stage','status','next_action','revision','plan_review_iteration','qualifying_plan_review_iteration','review_history','review_context','updated_at'];const errors=req.filter((k)=>state[k]==null).map((k)=>`${k} is required`);if(!STAGES.includes(state.stage))errors.push(`unknown stage: ${state.stage}`);if(!Array.isArray(state.review_history))errors.push('review_history is invalid');if(!state.review_context||!Array.isArray(state.review_context.replacement_history))errors.push('review_context is invalid');if(!state.agent_state||typeof state.agent_state!=='object')errors.push('agent_state is required');return errors;}
-function transition(state,next,patch={}){validateState(state);if(PROTECTED_TRANSITION_FIELDS.some((k)=>Object.prototype.hasOwnProperty.call(patch,k)))throw new Error('PROTECTED_STATE_PATCH');const allowed={draft:['preflighted','blocked'],preflighted:['reviewing','blocked','auth_waiting','connection_waiting'],reviewing:['approved','blocked','auth_waiting','connection_waiting','result_unknown'],approved:['completed','blocked'],completed:[],blocked:['draft','preflighted'],auth_waiting:['preflighted','blocked'],connection_waiting:['reviewing','blocked'],result_unknown:['reviewing','blocked']};if(!allowed[state.status]?.includes(next))throw new Error(`INVALID_TRANSITION: ${state.status}->${next}`);const c={...state,...patch,status:next,updated_at:new Date().toISOString()};if(STAGE_STATUSES[c.stage]&&!STAGE_STATUSES[c.stage].includes(next))throw new Error(`STATUS_STAGE_MISMATCH: ${next}/${c.stage}`);if(next==='preflighted'&&c.preflight_passed!==true)throw new Error('PREFLIGHT_REQUIRED');if(next==='approved'&&(c.plan_approved!==true||c.approved_revision!==c.target_revision))throw new Error('PLAN_APPROVAL_REQUIRED');return c;}
-function advanceStage(state,nextStage,evidence,context={}){validateState(state);const i=WORKFLOW_STAGES.indexOf(state.stage);if(WORKFLOW_STAGES.indexOf(nextStage)!==i+1)throw new Error(`INVALID_STAGE_TRANSITION: ${state.stage}->${nextStage}`);if(!evidence||STAGE_REQUIREMENTS[nextStage].some((k)=>typeof evidence[k]!=='string'||!evidence[k]))throw new Error(`STAGE_EVIDENCE_REQUIRED: ${nextStage}`);if(!context.workspaceRoot)throw new Error('STAGE_WORKSPACE_REQUIRED');if(STAGE_ENTRY_STATUSES[nextStage]&&!STAGE_ENTRY_STATUSES[nextStage].includes(state.status))throw new Error(`STAGE_STATUS_PRECONDITION: ${state.stage}/${state.status}->${nextStage}`);if(nextStage==='implementation'&&(state.plan_approved!==true||state.approved_revision!==state.target_revision||!state.approval_receipt))throw new Error('PLAN_APPROVAL_REQUIRED');const verified=validateStageEvidence(context.workspaceRoot,nextStage,evidence,{repositoryRoot:context.repositoryRoot??context.workspaceRoot});const c={...state,stage:nextStage,status:STAGE_STATUSES[nextStage][STAGE_STATUSES[nextStage].length-1],evidence:{...state.evidence,[nextStage]:verified},updated_at:new Date().toISOString()};if(!stateValidator(c))throw new Error(`STAGE_EVIDENCE_INVALID: ${stateValidator.errors.map((e)=>e.instancePath||e.keyword).join(',')}`);return c;}
-function approvePlan(state,approval){validateState(state);if(state.stage!=='plan_review'||state.status!=='reviewing')throw new Error('PLAN_REVIEW_STAGE_REQUIRED');if(!approval||approval.plan_approved!==true||approval.approved_revision!==state.target_revision||typeof approval.approval_receipt!=='object')throw new Error('PLAN_APPROVAL_REQUIRED');const c={...state,plan_approved:true,approved_revision:approval.approved_revision,approval_receipt:approval.approval_receipt,updated_at:new Date().toISOString()};if(!stateValidator(c))throw new Error(`STATE_SCHEMA_INVALID: ${stateValidator.errors.map((e)=>e.instancePath||e.keyword).join(',')}`);return c;}
-module.exports={STAGES,APPROVAL_KINDS,STATES,WORKFLOW_STAGES,STAGE_REQUIREMENTS,STAGE_STATUSES,STAGE_ENTRY_STATUSES,PROTECTED_TRANSITION_FIELDS,deriveQualifyingPlanReviewIteration,initialState,validateState,transition,advanceStage,approvePlan,canonicalJson};
+export const STAGES = [
+  'prototype_intake', 'prototype_design', 'prototype_implementation', 'prototype_evaluation',
+  'promotion_waiting_approval', 'production_grilling', 'production_spec_waiting_approval',
+  'production_issue_creating', 'production_issue_waiting_review', 'production_issue_ready', 'production_planning', 'production_plan_review', 'production_plan_improvement',
+  'production_plan_waiting_approval', 'production_implementation', 'production_pr_draft',
+  'production_pr_review', 'production_fix', 'production_publish_waiting_approval',
+  'production_published', 'production_merge_waiting_approval', 'completed', 'stopped', 'blocked'
+];
+
+export const APPROVAL_KINDS = [
+  'prototype_implementation', 'promotion', 'production_spec', 'production_issue_review', 'production_plan',
+  'pr_publish', 'pr_merge', 'destructive_operation', 'spec_change', 'update',
+  'review_conversation_replacement'
+];
+
+export function deriveQualifyingPlanReviewIteration(reviewHistory, activeConversationId) {
+  if (!activeConversationId || !Array.isArray(reviewHistory)) return 0;
+  const qualifying = reviewHistory.filter((review) => review.stage === 'production_plan_review'
+    && review.role === 'plan_review'
+    && review.conversation_id === activeConversationId
+    && review.improved === true
+    && review.dispositions_complete === true);
+  let expectedRound = 1;
+  for (const review of qualifying) {
+    if (review.round !== expectedRound) return expectedRound - 1;
+    expectedRound += 1;
+  }
+  return qualifying.length;
+}
+
+export function initialState(projectId, workflowVersion = 1) {
+  const now = new Date().toISOString();
+  return {
+    workflow_version: workflowVersion, schema_version: 1, adapter_version: 1,
+    orchestrator_id: null, orchestrator_generation: 1, orchestrator_status: 'ACTIVE',
+    project_id: projectId, work_id: 'unassigned', stage: 'prototype_intake', status: 'ready',
+    agent: 'codex', chatgpt_project: 'prototype', artifacts: [], base_revision: null,
+    current_revision: null, next_action: 'create_concept_brief', stop_reason: null, revision: 1,
+    plan_review_iteration: 0, qualifying_plan_review_iteration: 0, review_history: [],
+    prototype_review_iteration: 0, qualifying_prototype_review_iteration: 0, prototype_model_confirmed: false, prototype_review_conversation_id: null, prototype_required_model: null, prototype_actual_model: null, prototype_model_user_confirmed: false,
+    issue_identity: null, connection_binding: null, conversation_registry: {}, presentation_receipts: [], active_external_operation: null,
+    review_context: {
+      planning_conversation_id: null, active_plan_review_conversation_id: null,
+      active_plan_review_project_id: null, active_plan_review_history_revision: 0,
+      active_plan_review_non_resumable_reason: null, replacement_history: []
+    },
+    updated_at: now,
+    conversation: { task_id: null, iteration: 0, project_id: null, project_url: null, conversation_id: null, conversation_url: null, workspace: null, role: null, stage: null, state: 'INIT', last_message_id: null, next_operation: null, failure_reason: null, sent_messages: [] },
+    agent_state: { agent: 'codex', stage: 'prototype_intake', status: 'ready', started_at: now,
+      updated_at: now, waiting_reason: null, next_action: 'create_concept_brief', error: null }
+  };
+}
+
+export function validateState(state) {
+  const required = ['workflow_version', 'project_id', 'work_id', 'stage', 'status', 'next_action', 'revision', 'plan_review_iteration', 'qualifying_plan_review_iteration', 'review_history', 'review_context', 'updated_at'];
+  const errors = required.filter((key) => state[key] === undefined || state[key] === null).map((key) => `${key} is required`);
+  if (!STAGES.includes(state.stage)) errors.push(`unknown stage: ${state.stage}`);
+  if (!Number.isInteger(state.plan_review_iteration) || state.plan_review_iteration < 0) errors.push('plan_review_iteration is invalid');
+  if (!Number.isInteger(state.qualifying_plan_review_iteration) || state.qualifying_plan_review_iteration < 0) errors.push('qualifying_plan_review_iteration is invalid');
+  if (state.prototype_review_iteration !== undefined && (!Number.isInteger(state.prototype_review_iteration) || state.prototype_review_iteration < 0)) errors.push('prototype_review_iteration is invalid');
+  if (state.qualifying_prototype_review_iteration !== undefined && (!Number.isInteger(state.qualifying_prototype_review_iteration) || state.qualifying_prototype_review_iteration < 0)) errors.push('qualifying_prototype_review_iteration is invalid');
+  if (state.prototype_model_confirmed !== undefined && typeof state.prototype_model_confirmed !== 'boolean') errors.push('prototype_model_confirmed is invalid');
+  for (const key of ['prototype_review_conversation_id', 'prototype_required_model', 'prototype_actual_model']) if (state[key] !== undefined && state[key] !== null && typeof state[key] !== 'string') errors.push(`${key} is invalid`);
+  if (state.prototype_model_user_confirmed !== undefined && typeof state.prototype_model_user_confirmed !== 'boolean') errors.push('prototype_model_user_confirmed is invalid');
+  if (!Array.isArray(state.review_history)) errors.push('review_history is invalid');
+  if (!state.review_context || typeof state.review_context !== 'object' || !Array.isArray(state.review_context.replacement_history)) errors.push('review_context is invalid');
+  if (!state.agent_state || typeof state.agent_state !== 'object') errors.push('agent_state is required');
+  else for (const key of ['agent', 'stage', 'status', 'started_at', 'updated_at', 'waiting_reason', 'next_action', 'error']) {
+    if (!(key in state.agent_state)) errors.push(`agent_state.${key} is required`);
+  }
+  if (state.agent_state && (state.agent_state.stage !== state.stage || state.agent_state.next_action !== state.next_action)) {
+    errors.push('agent_state disagrees with top-level stage or next_action');
+  }
+  if (state.conversation !== undefined && (!state.conversation || typeof state.conversation !== 'object' || !Array.isArray(state.conversation.sent_messages))) errors.push('conversation state is invalid');
+  if (state.conversation && !['INIT', 'PREPARED', 'SENDING', 'AMBIGUOUS', 'EXECUTING', 'EXECUTED', 'REVIEW', 'DONE', 'BLOCKED'].includes(state.conversation.state)) errors.push('conversation state is unknown');
+  if (state.conversation && state.conversation.state !== 'INIT') {
+    for (const key of ['task_id', 'project_id', 'workspace', 'role', 'stage', 'conversation_id', 'last_message_id', 'next_operation']) if (!state.conversation[key]) errors.push(`conversation.${key} is required outside INIT`);
+    for (const entry of state.conversation.sent_messages) {
+      if (!entry.task_id || !Number.isInteger(entry.iteration) || !entry.message_id || !entry.conversation_id || !['prepared', 'sending', 'confirmed', 'ambiguous'].includes(entry.delivery_state)) errors.push('conversation.sent_messages entry is invalid');
+    }
+  }
+  if (state.presentation_receipts !== undefined && !Array.isArray(state.presentation_receipts)) errors.push('presentation_receipts is invalid');
+  if (!Number.isInteger(state.orchestrator_generation) || state.orchestrator_generation < 1) errors.push('orchestrator_generation is invalid');
+  if (!['ACTIVE', 'SUPERSEDED', 'STOPPED'].includes(state.orchestrator_status)) errors.push('orchestrator_status is invalid');
+  if (state.conversation_registry !== undefined && (!state.conversation_registry || typeof state.conversation_registry !== 'object' || Array.isArray(state.conversation_registry))) errors.push('conversation_registry is invalid');
+  return errors;
+}

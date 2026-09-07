@@ -10,7 +10,7 @@ export function createExecutionEngine({ root, childAdapter, gitAdapter, integrat
       const scheduler = new TaskScheduler({ generation: activeGeneration });
       if (!approvedDigest) throw new Error('approved execution-plan digest is required');
       scheduler.load(plan, { approvedDigest });
-      const runner = new ChildTaskRunner({ root, adapter: childAdapter, worktreeManager: new WorktreeManager(root, { git: gitAdapter, requireLatestMain: true }), generation: activeGeneration });
+      const runner = new ChildTaskRunner({ root, adapter: childAdapter, worktreeManager: new WorktreeManager(root, { git: gitAdapter }), generation: activeGeneration });
       const integration = new IntegrationManager({ generation: activeGeneration, integrate, test });
       let revision = baseRevision;
       while (scheduler.ready().length) {

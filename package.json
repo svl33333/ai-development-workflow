@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "Fail-closed workflow and review evidence harness",
-  "type": "commonjs",
+  "type": "module",
   "engines": { "node": ">=24.0.0", "npm": ">=11.0.0" },
   "scripts": {
-    "test": "node --test test/adapters.test.js test/artifact-digest.test.js test/base-sync-guard.test.js test/bootstrap-clean-checkout.test.js test/external-operation.test.js test/recovery.test.js test/review-contract.test.js test/review.test.js test/workflow.test.js test/worktree-manager.test.js",
-    "validate:fixtures": "node src/cli.js validate-fixtures",
-    "status": "node src/cli.js status --json"
+    "test": "node --test test/*.test.js test/*.test.cjs fixtures/sample-product/test/*.test.js",
+    "validate:fixtures": "node src/cli.cjs validate-fixtures",
+    "status": "node src/cli.cjs status --json"
   },
   "dependencies": { "ajv": "^8.17.1" }
 }

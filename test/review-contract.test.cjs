@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { createReviewBundle, bundleDigest } = require('../src/review-bundle');
-const { preflight } = require('../src/review-preflight');
-const { validateResponse } = require('../src/review');
-const { workingTreeDigest } = require('../src/artifact-digest');
+const { createReviewBundle, bundleDigest } = require('../src/review-bundle.cjs');
+const { preflight } = require('../src/review-preflight.cjs');
+const { validateResponse } = require('../src/review.cjs');
+const { workingTreeDigest } = require('../src/artifact-digest.cjs');
 
 function git(root, args) { return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim(); }
 function fixture() {

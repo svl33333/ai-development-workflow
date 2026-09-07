@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { workingTreeDigest } = require('./artifact-digest');
+const { workingTreeDigest } = require('./artifact-digest.cjs');
 
 function repositoryHead(root) {
   return execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();

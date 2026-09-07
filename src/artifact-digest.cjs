@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { sha256, canonicalJson } = require('./canonical');
+const { sha256, canonicalJson } = require('./canonical.cjs');
 
 function normalizeRelativePath(filePath) { return filePath.split(path.sep).join('/').replace(/^\.\//, ''); }
 

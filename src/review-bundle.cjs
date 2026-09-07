@@ -1,4 +1,4 @@
-const { canonicalJson, sha256 } = require('./canonical');
+const { canonicalJson, sha256 } = require('./canonical.cjs');
 
 function pathsFromInputs(inputs) {
   return [...new Set((inputs || []).map((input) => input.path))].sort();

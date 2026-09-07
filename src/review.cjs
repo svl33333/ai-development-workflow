@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { preflight, validateReviewResponseSchema, changedPaths, resolveRevision } = require('./review-preflight');
+const { preflight, validateReviewResponseSchema, changedPaths, resolveRevision } = require('./review-preflight.cjs');
 
 function recordDigest(record) {
   if (record.review_digest) return record.review_digest;
@@ -16,7 +16,7 @@ function loadPreviousReviewRecord(bundle, context) {
     const recordPath = path.resolve(context.repositoryRoot ?? bundle.project.workspace, suppliedPath);
     const record = JSON.parse(fs.readFileSync(recordPath, 'utf8'));
     if (record.artifact_digest) {
-      const actual = require('./artifact-digest').workingTreeDigest(recordPath);
+      const actual = require('./artifact-digest.cjs').workingTreeDigest(recordPath);
       if (actual.value !== record.artifact_digest) throw new Error('PRIOR_REVIEW_RECORD_ARTIFACT_MISMATCH');
     }
     return record;

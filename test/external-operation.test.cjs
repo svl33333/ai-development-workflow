@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { githubOperationKey, chatgptOperationKey, resumeDecision, executeOperation } = require('../src/external-operation');
-const { StateStore } = require('../src/state-store');
+const { githubOperationKey, chatgptOperationKey, resumeDecision, executeOperation } = require('../src/external-operation.cjs');
+const { StateStore } = require('../src/state-store.cjs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');

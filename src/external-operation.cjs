@@ -1,4 +1,4 @@
-const { operationKey } = require('./review-preflight');
+const { operationKey } = require('./review-preflight.cjs');
 function githubOperationKey({ operationType, repositoryIdentity, issueOrPrIdentity, taskId, generation, targetRevision }) { return operationKey([operationType, repositoryIdentity, issueOrPrIdentity, taskId, String(generation), targetRevision]); }
 function chatgptOperationKey({ connectorIdentity, workspaceIdentity, projectIdentity, conversationIdentity, taskId, stage, iteration, bundleDigest, targetRevision }) { return operationKey(['chatgpt_request', connectorIdentity, workspaceIdentity, projectIdentity, conversationIdentity, taskId, stage, String(iteration), bundleDigest, targetRevision]); }
 function resumeDecision(record, remote) { if (record.status === 'verified') return 'reuse'; if (record.status === 'result_unknown' && remote?.operation_key === record.operation_key) return 'reuse'; if (record.status === 'result_unknown') return 'blocked'; return 'resume'; }
