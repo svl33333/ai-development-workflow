@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "issue_id": "10",
+  "kind": "rebase_and_latest_main_guard",
+  "target_revision": "6f41a60db85e1b1fda5a07baf67a7eb64cf67574",
+  "origin_main_fetched": true,
+  "rebase_commits_replayed": 29,
+  "commands": [
+    { "command": "node --test Issue #10 target suite", "status": "passed", "tests": 38 },
+    { "command": "npm run validate:fixtures", "status": "passed", "fixtures": 4 },
+    { "command": "git diff --check", "status": "passed" }
+  ],
+  "push_performed": false,
+  "live_e2e": "not_run",
+  "note_policy": "pre-rebase notes remain historical; bind evidence to this target revision"
+}

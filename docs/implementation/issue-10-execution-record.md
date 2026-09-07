@@ -49,6 +49,14 @@ GitHub write、ChatGPT送信、child process launch、PR、merge、live E2E は�
 
 - M1: isolated checkout materialization uses `git archive HEAD` plus tar extraction, so only tracked files from the committed revision enter the test environment. This was selected over `fs.cpSync` because ignored and untracked files cannot be included by archive construction; the tracked-only negative test proves the exclusion on Windows.
 
+## Rebase and latest-main guard
+
+- `origin/main` was fetched before the conflict-resolution rebase; all 29 branch commits were replayed onto the fetched tip.
+- The rebased implementation HEAD was `b98abf3be204b6cce713f9a5bbf8127fc9c5450b`; the latest-main guard was then added in commit `6f41a60db85e1b1fda5a07baf67a7eb64cf67574`.
+- Before implementation worktree reservation, the guard runs `git fetch origin`, resolves `origin/main`, and requires it to be an ancestor of the requested base revision. Fetch, auth, missing-ref, and comparison failures raise `BASE_SYNC_REQUIRED` with instructions to create from latest main or rebase the existing branch.
+- New guard suite: 2/2 passed; combined Issue #10 target suite: 38/38 passed; fixture validation: 4 passed. No push was performed.
+- Evidence and notes tied to pre-rebase commits are historical. A new HEAD binding must target `6f41a60db85e1b1fda5a07baf67a7eb64cf67574` (or the subsequent metadata commit); no old note was rewritten automatically.
+
 - RQ-01/02: review bundle now separates base, implementation, and review revisions; allowed metadata commit set, path scope, expected change scope, work identity, and presentation target are schema fields with independent preflight checks.
 - RQ-04: re-review validates a loaded prior record, prior finding IDs, fix revisions, and changed-file ranges against Git.
 - RQ-06: plan review qualification is derived from reread review records and a reread human approval receipt; aggregate counters and `NEEDS_WORK` responses cannot qualify.

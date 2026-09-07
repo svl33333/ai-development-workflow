@@ -14,6 +14,7 @@
 | RQ-10 | C2C disconnect/binding mismatchは送信せずconnection_waiting、二重送信なし | `adapters.test.js`, `recovery.test.js` | disconnect / wrong binding | operation record |
 | RQ-11 | result unknownはremote照合なしに再createせずreuseまたはblocked | `external-operation.test.js` | remoteなし・key不一致 | recovery checkpoint |
 | RQ-12 | clean checkout、positive/negative fixture、integrated test、live E2E未実施を明示 | `bootstrap-clean-checkout.test.js`, `npm run validate:fixtures` | validation失敗は非0終了 | execution record |
+| RQ-13 | 実装開始前に `git fetch origin` と `origin/main` の祖先性を検証し、古い/比較不能/認証失敗をfail-closed | `base-sync-guard.test.js` | fetch/auth/ancestor判定失敗 | rebased execution evidence |
 
 ## Fixture coverage
 
