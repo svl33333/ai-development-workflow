@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "issue_id": "10",
+  "kind": "rebase_and_latest_main_guard",
+  "target_revision": "877610581a62dd44e4ce663608e707c476ed467c",
+  "verified_revision": "877610581a62dd44e4ce663608e707c476ed467c",
+  "origin_main_fetched": true,
+  "rebase_commits_replayed": 29,
+  "commands": [
+    { "command": "npm ci", "status": "passed" },
+    { "command": "npm test (explicit Issue #10 CommonJS harness)", "status": "passed", "tests": 43 },
+    { "command": "npm run validate:fixtures", "status": "passed", "fixtures": 4 },
+    { "command": "git diff --check", "status": "passed" }
+  ],
+  "push_performed": false,
+  "live_e2e": "not_run",
+  "note_policy": "pre-rebase notes remain historical; bind evidence to this target revision",
+  "evidence_digest": "1bcfc52e628c46e8c6921b8a206af2d6af474e05f4a59623b8c4deb32a707f43"
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "issue": "10",
+  "classification": "metadata_only",
+  "implementation_revision": "ea03e6a2c5b04eff3dc00c8d5bd5f7eb24a0b288",
+  "execution_evidence_path": "docs/implementation/issue-10-ea03e6a-execution-evidence.json",
+  "execution_evidence_digest": "a0a4a85f4232c2267667dc0167bb6e3b4b9928f7bd88c70553a904f7e37ef616",
+  "allowed_metadata_revision": "1a45312d82f9c1fc306b22cb1073c8a3beb45677",
+  "allowed_paths": [
+    "docs/implementation/issue-10-ea03e6a-execution-evidence.json",
+    "docs/implementation/issue-10-execution-evidence-binding.json"
+  ],
+  "record_digest": "d3586238a6a37b30bf005b6dca2a9f67941d629beab6983c2ea3d5e360f7c706"
+}

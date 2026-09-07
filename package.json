@@ -1,9 +1,14 @@
 {
   "name": "ai-development-workflow",
   "version": "0.1.0",
-  "description": "Shared AI development workflow for Codex and ChatGPT/C2C",
+  "private": true,
+  "description": "Fail-closed workflow and review evidence harness",
   "type": "module",
-  "bin": { "ai-workflow": "bin/ai-workflow.js" },
-  "scripts": { "test": "node --test test/*.test.js fixtures/sample-product/test/*.test.js", "validate:fixture": "node scripts/validate-fixture.js" },
-  "engines": { "node": ">=20" }
+  "engines": { "node": ">=24.0.0", "npm": ">=11.0.0" },
+  "scripts": {
+    "test": "node --test test/*.test.js test/*.test.cjs fixtures/sample-product/test/*.test.js",
+    "validate:fixtures": "node src/cli.cjs validate-fixtures",
+    "status": "node src/cli.cjs status --json"
+  },
+  "dependencies": { "ajv": "^8.17.1" }
 }

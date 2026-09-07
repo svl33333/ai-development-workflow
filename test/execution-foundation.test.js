@@ -30,7 +30,7 @@ test('integration requires local review and generation match', async () => {
 });
 
 test('child runner exposes restricted capabilities and worktree identity', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-child-')); const manager = new WorktreeManager(root);
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-child-')); const manager = new WorktreeManager(root, { requireLatestMain: false });
   const runner = new ChildTaskRunner({ root, worktreeManager: manager, allowSyntheticWorktree: true, adapter: { run: async ({ capabilities }) => { assert.equal(capabilities.can_publish, false); assert.equal(capabilities.can_merge, false); return { status: 'SUCCEEDED', commit: 'abc', tests: { ok: true }, local_review: { reviewer: 'codex', reviewed_revision: 'abc', findings: [], blocking_count: 0, disposition: 'approved' }, artifact_digest: 'digest' }; } } });
   const output = await runner.run({ ...unit('a'), run_id: 'run-a', generation: 1 }, { baseRevision: 'base', prompt: 'implement' }); assert.match(output.worktree, /^\.ai-workflow\/worktrees\//); assert.equal(output.local_review.disposition, 'approved');
 });
@@ -39,4 +39,11 @@ test('child execution fails closed without a real worktree or local review', asy
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-child-')); const manager = new WorktreeManager(root);
   const runner = new ChildTaskRunner({ root, worktreeManager: manager, adapter: { run: async () => ({ status: 'SUCCEEDED' }) } });
   await assert.rejects(() => runner.run({ ...unit('a'), generation: 1 }, { baseRevision: 'base', prompt: 'implement' }), /real Git worktree/);
+});
+
+test('ESM worktree creation fails closed without the real Git adapter', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-workflow-child-'));
+  const manager = new WorktreeManager(root);
+  await assert.rejects(() => manager.create({ unitId: 'a', runId: 'run-a', baseRevision: 'base' }), /BASE_SYNC_REQUIRED/);
+  await assert.rejects(() => fs.access(path.join(root, '.ai-workflow', 'worktrees')), { code: 'ENOENT' });
 });

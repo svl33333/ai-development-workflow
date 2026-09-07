@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "evidence_type": "isolated_clean_checkout",
+  "source_revision": "e86934f4842a3ebb4f8935bcea2222613c744560",
+  "checkout_isolation": "temporary copy without .git, node_modules, or workflow state",
+  "commands": [
+    {"command": "npm ci", "status": "passed"},
+    {"command": "npm test", "status": "passed", "tests": 40},
+    {"command": "npm run validate:fixtures", "status": "passed", "fixtures": 4}
+  ],
+  "runtime": {"node": "v24.16.0", "npm": "11.13.0", "git": "2.55.0.windows.3"},
+  "live_e2e": "not_run",
+  "recorded_at": "2026-09-07"
+}
