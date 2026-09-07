@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "issue": "10",
+  "implementation_revision": "ea03e6a2c5b04eff3dc00c8d5bd5f7eb24a0b288",
+  "target_revision": "ea03e6a2c5b04eff3dc00c8d5bd5f7eb24a0b288",
+  "base_revision": "d5c426cfb3327c502c5d58972596e536fef10147",
+  "commands": [
+    {
+      "command": "npm test",
+      "exit_code": 0,
+      "tests": 90,
+      "passed": 90,
+      "failed": 0
+    },
+    {
+      "command": "npm run validate:fixtures",
+      "exit_code": 0,
+      "fixtures": 4,
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "review_scope": {
+    "c1_module_mode": "package.json uses ESM and Issue #10 CommonJS compatibility files use .cjs",
+    "h1_latest_main_guard": "ESM and CommonJS WorktreeManager paths fail closed before worktree creation when latest-main verification is unavailable",
+    "h2_evidence_binding": "This record is sourced from the exact implementation revision above"
+  },
+  "metadata_only": false
+}
